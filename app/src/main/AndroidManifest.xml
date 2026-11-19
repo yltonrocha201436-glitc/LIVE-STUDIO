@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
     <application
         android:allowBackup="true"
@@ -28,5 +29,9 @@
             android:name=".ScreenProjectionService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection|microphone" />
+        <service
+            android:name=".StudioForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="camera|microphone" />
     </application>
 </manifest>
