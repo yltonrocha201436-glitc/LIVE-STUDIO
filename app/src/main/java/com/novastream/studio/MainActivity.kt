@@ -91,6 +91,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     var caption by remember { mutableStateOf("YLTON ROCHA  |  AO VIVO") }
     var scene by remember { mutableStateOf("Câmera") }
     var chroma by remember { mutableStateOf(false) }
+    var visualFilter by remember { mutableStateOf("Normal") }
     var sensitivity by remember { mutableFloatStateOf(0.72f) }
     var micGain by remember { mutableFloatStateOf(1f) }
     var systemGain by remember { mutableFloatStateOf(1f) }
@@ -172,7 +173,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     }
 
     fun applyComposition() {
-        activity.engine?.setComposition(scene, caption, chroma, sensitivity)
+        activity.engine?.setComposition(scene, caption, chroma, sensitivity, visualFilter)
     }
 
     MaterialTheme(
@@ -265,6 +266,11 @@ private fun NovaStreamApp(activity: MainActivity) {
                         chroma = chroma,
                         onChromaChange = {
                             chroma = it
+                            applyComposition()
+                        },
+                        visualFilter = visualFilter,
+                        onVisualFilterChange = {
+                            visualFilter = it
                             applyComposition()
                         },
                         sensitivity = sensitivity,
@@ -517,6 +523,8 @@ private fun SourcesPage(
     chromaBackgroundLoaded: Boolean,
     chroma: Boolean,
     onChromaChange: (Boolean) -> Unit,
+    visualFilter: String,
+    onVisualFilterChange: (String) -> Unit,
     sensitivity: Float,
     onSensitivityChange: (Float) -> Unit,
     engineReady: Boolean
@@ -535,6 +543,20 @@ private fun SourcesPage(
         }
         OutlinedButton(onClick = onPickImage, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
             Text(if (imageLoaded) "TROCAR IMAGEM / LOGO" else "ADICIONAR IMAGEM / LOGO")
+        }
+    }
+    StudioCard {
+        Text("EFEITOS DE CÂMERA", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Filtros processados na GPU e enviados junto com o vídeo.", color = Muted, fontSize = 10.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf("Normal", "Beleza", "Sépia", "P&B", "Vibrante").forEach { item ->
+                FilterChip(
+                    selected = visualFilter == item,
+                    onClick = { onVisualFilterChange(item) },
+                    label = { Text(item, fontSize = 10.sp) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
     StudioCard {
