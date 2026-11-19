@@ -176,6 +176,7 @@ class StreamEngine(
             publish("Falha ao voltar para a câmera: ${error.localizedMessage ?: "erro"}")
         } finally {
             ScreenProjectionService.stop(appContext)
+            if (live) StudioForegroundService.start(appContext)
         }
     }
 
@@ -379,6 +380,8 @@ class StreamEngine(
             if (screenCaptureActive) stopScreenCapture()
             if (stream.isOnPreview) stream.stopPreview()
             stream.release()
+            StudioForegroundService.stop(appContext)
+            ScreenProjectionService.stop(appContext)
         } catch (_: Exception) {
             if (screenCaptureActive) ScreenProjectionService.stop(appContext)
             StudioForegroundService.stop(appContext)
