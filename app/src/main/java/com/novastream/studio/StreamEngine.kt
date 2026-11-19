@@ -483,7 +483,7 @@ class StreamEngine(
             gl.clearFilters()
 
             // Cenas de espera usam fundo preto; as fontes são desenhadas acima dele.
-            if (currentScene != "Câmera") {
+            if (currentScene != "Câmera" && !videoFileActive) {
                 gl.addFilter(BlackFilterRender())
             }
 
