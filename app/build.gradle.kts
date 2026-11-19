@@ -12,8 +12,8 @@ android {
         applicationId = "com.novastream.studio"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 8
+        versionName = "0.8.0"
     }
 
     buildFeatures { compose = true }
@@ -39,6 +39,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.zxing:core:3.5.3")
 
     // Real-time camera, microphone, OpenGL composition and RTMP/SRT streaming.
     implementation("com.github.pedroSG94.RootEncoder:library:2.6.7")
