@@ -413,15 +413,17 @@ class StreamEngine(
             }
 
 
-            if (avatarClosedBitmap != null && avatarOpenBitmap != null) {
+            val closedAvatar = avatarClosedBitmap
+            val openAvatar = avatarOpenBitmap
+            if (closedAvatar != null && openAvatar != null) {
                 val closedFilter = ImageObjectFilterRender().apply {
-                    setImage(avatarClosedBitmap)
+                    setImage(closedAvatar)
                     setScale(27f, 27f)
                     setPosition(70f, 70f)
                     setAlpha(if (pngTuberVoiceActive) 0f else 1f)
                 }
                 val openFilter = ImageObjectFilterRender().apply {
-                    setImage(avatarOpenBitmap)
+                    setImage(openAvatar)
                     setScale(27f, 27f)
                     setPosition(70f, 70f)
                     setAlpha(if (pngTuberVoiceActive) 1f else 0f)
