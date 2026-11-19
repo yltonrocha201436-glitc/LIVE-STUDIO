@@ -38,6 +38,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.core:core-ktx:1.15.0")
 
     // Real-time camera, microphone, OpenGL composition and RTMP/SRT streaming.
     implementation("com.github.pedroSG94.RootEncoder:library:2.6.7")
