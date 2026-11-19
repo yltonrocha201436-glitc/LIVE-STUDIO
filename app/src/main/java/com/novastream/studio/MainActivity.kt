@@ -93,17 +93,22 @@ private fun NovaStreamApp(activity: MainActivity) {
         )
     }
     var endpoint by rememberSaveable { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
-    var caption by rememberSaveable { mutableStateOf(prefs.getString("caption", "YLTON ROCHA  |  AO VIVO") ?: "YLTON ROCHA  |  AO VIVO") }
-    var caption2 by rememberSaveable { mutableStateOf(prefs.getString("caption2", "") ?: "") }
-    var caption3 by rememberSaveable { mutableStateOf(prefs.getString("caption3", "") ?: "") }
+    var scene by rememberSaveable { mutableStateOf(prefs.getString("scene", "Câmera") ?: "Câmera") }
+    var sceneDraftsRaw by rememberSaveable { mutableStateOf(prefs.getString("scene_drafts", "") ?: "") }
+    val initialDraft = remember(sceneDraftsRaw, scene) { SceneDraftStore.decode(sceneDraftsRaw)[scene] }
+    var caption by rememberSaveable { mutableStateOf(initialDraft?.caption ?: (prefs.getString("caption", "YLTON ROCHA  |  AO VIVO") ?: "YLTON ROCHA  |  AO VIVO")) }
+    var caption2 by rememberSaveable { mutableStateOf(initialDraft?.secondCaption ?: (prefs.getString("caption2", "") ?: "")) }
+    var caption3 by rememberSaveable { mutableStateOf(initialDraft?.thirdCaption ?: (prefs.getString("caption3", "") ?: "")) }
     var qrContent by rememberSaveable { mutableStateOf("") }
     var imageCount by rememberSaveable { mutableStateOf(0) }
     var customScenesRaw by rememberSaveable { mutableStateOf(prefs.getString("custom_scenes", "") ?: "") }
     val customScenes = remember(customScenesRaw) { customScenesRaw.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(12) }
-    var scene by rememberSaveable { mutableStateOf(prefs.getString("scene", "Câmera") ?: "Câmera") }
-    var chroma by rememberSaveable { mutableStateOf(prefs.getBoolean("chroma", false)) }
-    var visualFilter by rememberSaveable { mutableStateOf(prefs.getString("visual_filter", "Normal") ?: "Normal") }
-    var sensitivity by rememberSaveable { mutableFloatStateOf(prefs.getFloat("chroma_sensitivity", 0.72f)) }
+    var chroma by rememberSaveable { mutableStateOf(initialDraft?.chroma ?: prefs.getBoolean("chroma", false)) }
+    var visualFilter by rememberSaveable { mutableStateOf(initialDraft?.visualFilter ?: (prefs.getString("visual_filter", "Normal") ?: "Normal")) }
+    var sensitivity by rememberSaveable { mutableFloatStateOf(initialDraft?.sensitivity ?: prefs.getFloat("chroma_sensitivity", 0.72f)) }
+    var imagePlacementsRaw by rememberSaveable { mutableStateOf(SceneDraftStore.encodePlacements(initialDraft?.imagePlacements ?: emptyList())) }
+    val imagePlacements = remember(imagePlacementsRaw) { SceneDraftStore.decodePlacements(imagePlacementsRaw) }
+    var selectedImageLayer by rememberSaveable { mutableIntStateOf(0) }
     var micGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("mic_gain", 1f)) }
     var systemGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("system_gain", 1f)) }
     var bitrate by rememberSaveable { mutableFloatStateOf(prefs.getFloat("bitrate", 3.5f)) }
@@ -114,7 +119,19 @@ private fun NovaStreamApp(activity: MainActivity) {
     var chromaBackgroundLoaded by remember { mutableStateOf(false) }
     var screenMode by remember { mutableStateOf(false) }
 
-    LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw) {
+    LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw, imagePlacementsRaw) {
+        val savedDrafts = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
+        savedDrafts[scene] = SceneDraft(
+            caption = caption,
+            secondCaption = caption2,
+            thirdCaption = caption3,
+            chroma = chroma,
+            visualFilter = visualFilter,
+            sensitivity = sensitivity,
+            imagePlacements = imagePlacements
+        )
+        val encodedDrafts = SceneDraftStore.encode(savedDrafts)
+        if (encodedDrafts != sceneDraftsRaw) sceneDraftsRaw = encodedDrafts
         prefs.edit()
             .putString("endpoint", endpoint).putString("caption", caption)
             .putString("caption2", caption2).putString("caption3", caption3)
@@ -122,7 +139,8 @@ private fun NovaStreamApp(activity: MainActivity) {
             .putString("visual_filter", visualFilter).putFloat("chroma_sensitivity", sensitivity)
             .putFloat("mic_gain", micGain).putFloat("system_gain", systemGain)
             .putFloat("bitrate", bitrate).putBoolean("muted", muted)
-            .putString("custom_scenes", customScenesRaw).apply()
+            .putString("custom_scenes", customScenesRaw)
+            .putString("scene_drafts", encodedDrafts).apply()
     }
 
     val screenCaptureLauncher = rememberLauncherForActivityResult(
@@ -165,6 +183,17 @@ private fun NovaStreamApp(activity: MainActivity) {
                 activity.engine?.setImages(bitmaps)
                 imageCount = bitmaps.size
                 imageLoaded = true
+                val defaults = bitmaps.indices.map { index ->
+                    when (index) {
+                        0 -> ImageLayerPlacement(5f, 5f, 22f)
+                        1 -> ImageLayerPlacement(70f, 5f, 22f)
+                        2 -> ImageLayerPlacement(5f, 70f, 22f)
+                        3 -> ImageLayerPlacement(70f, 70f, 22f)
+                        else -> ImageLayerPlacement(38f, 38f, 22f)
+                    }
+                }
+                imagePlacementsRaw = SceneDraftStore.encodePlacements(defaults)
+                selectedImageLayer = 0
             } else if (uris.isNotEmpty()) {
                 activity.engineMessage = "Nenhuma imagem pôde ser carregada"
             }
@@ -230,6 +259,29 @@ private fun NovaStreamApp(activity: MainActivity) {
 
     fun applyComposition() {
         activity.engine?.setComposition(scene, caption, chroma, sensitivity, visualFilter, listOf(caption2, caption3))
+        activity.engine?.setImagePlacements(imagePlacements)
+    }
+
+    LaunchedEffect(scene, caption, caption2, caption3, chroma, sensitivity, visualFilter, imagePlacementsRaw) {
+        activity.engine?.setComposition(scene, caption, chroma, sensitivity, visualFilter, listOf(caption2, caption3))
+        activity.engine?.setImagePlacements(imagePlacements)
+    }
+
+    fun selectScene(target: String) {
+        if (target == scene) return
+        val existing = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
+        existing[scene] = SceneDraft(caption, caption2, caption3, chroma, visualFilter, sensitivity, imagePlacements)
+        val targetDraft = existing[target] ?: SceneDraft()
+        sceneDraftsRaw = SceneDraftStore.encode(existing)
+        scene = target
+        caption = targetDraft.caption
+        caption2 = targetDraft.secondCaption
+        caption3 = targetDraft.thirdCaption
+        chroma = targetDraft.chroma
+        visualFilter = targetDraft.visualFilter
+        sensitivity = targetDraft.sensitivity
+        imagePlacementsRaw = SceneDraftStore.encodePlacements(targetDraft.imagePlacements)
+        selectedImageLayer = 0
     }
 
     MaterialTheme(
@@ -308,7 +360,7 @@ private fun NovaStreamApp(activity: MainActivity) {
                                 customScenesRaw = (customScenes + cleanName).joinToString("\n")
                             }
                         },
-                        onSelect = { scene = it; applyComposition() },
+                        onSelect = { selectScene(it); applyComposition() },
                         caption = caption,
                         onCaptionChange = { caption = it; applyComposition() }
                     )
