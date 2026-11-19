@@ -35,7 +35,6 @@ class MainActivity : ComponentActivity() {
     var engine: StreamEngine? by mutableStateOf(null)
         private set
     var engineMessage by mutableStateOf("Aguardando permissões de câmera e microfone")
-        private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
