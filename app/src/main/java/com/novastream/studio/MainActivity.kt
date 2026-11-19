@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
             engineMessage = message
         }
         if (next.prepare()) {
+            next.setComposition("Câmera", "YLTON ROCHA  |  AO VIVO", false, 0.72f)
             engine = next
             engineMessage = next.status
         } else {
