@@ -112,6 +112,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     val imagePlacements = remember(imagePlacementsRaw) { SceneDraftStore.decodePlacements(imagePlacementsRaw) }
     var imagePathsRaw by rememberSaveable { mutableStateOf(SceneDraftStore.encodePaths(initialDraft?.imagePaths ?: emptyList())) }
     val imagePaths = remember(imagePathsRaw) { SceneDraftStore.decodePaths(imagePathsRaw) }
+    var sceneVideoPath by rememberSaveable { mutableStateOf(initialDraft?.videoPath ?: "") }
     var selectedImageLayer by rememberSaveable { mutableIntStateOf(0) }
     var micGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("mic_gain", 1f)) }
     var systemGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("system_gain", 1f)) }
@@ -140,7 +141,25 @@ private fun NovaStreamApp(activity: MainActivity) {
         }
     }
 
-    LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw, imagePlacementsRaw) {
+    fun saveSceneVideo(uri: android.net.Uri): String? {
+        return try {
+            val folder = java.io.File(context.filesDir, "scene_media")
+            if (!folder.exists() && !folder.mkdirs()) return null
+            val file = java.io.File.createTempFile("scene_video_", ".mp4", folder)
+            val input = context.contentResolver.openInputStream(uri) ?: return null
+            input.use { source ->
+                java.io.FileOutputStream(file).use { output -> source.copyTo(output) }
+            }
+            if (file.length() <= 0L) {
+                file.delete()
+                null
+            } else file.absolutePath
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw, imagePlacementsRaw, sceneVideoPath) {
         val savedDrafts = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
         savedDrafts[scene] = SceneDraft(
             caption = caption,
@@ -150,7 +169,8 @@ private fun NovaStreamApp(activity: MainActivity) {
             visualFilter = visualFilter,
             sensitivity = sensitivity,
             imagePlacements = imagePlacements,
-            imagePaths = imagePaths
+            imagePaths = imagePaths,
+            videoPath = sceneVideoPath
         )
         val encodedDrafts = SceneDraftStore.encode(savedDrafts)
         if (encodedDrafts != sceneDraftsRaw) sceneDraftsRaw = encodedDrafts
@@ -194,6 +214,19 @@ private fun NovaStreamApp(activity: MainActivity) {
             result[Manifest.permission.RECORD_AUDIO] == true
         if (permissionsOk) activity.prepareEngine()
         else activity.engineMessage = "Libere câmera e microfone nas permissões do Android"
+    }
+
+    val videoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val savedPath = saveSceneVideo(uri)
+            if (savedPath != null) {
+                sceneVideoPath = savedPath
+                if (!screenMode) activity.engine?.setVideoFileSource(savedPath)
+                activity.engineMessage = "Vídeo salvo nesta cena e configurado para repetir"
+            } else {
+                activity.engineMessage = "Não foi possível copiar o vídeo para o armazenamento do estúdio"
+            }
+        }
     }
 
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
@@ -301,11 +334,18 @@ private fun NovaStreamApp(activity: MainActivity) {
         imageLoaded = restored.isNotEmpty()
     }
 
+    LaunchedEffect(activity.engine, scene, sceneVideoPath, screenMode) {
+        if (!screenMode) {
+            if (sceneVideoPath.isNotBlank()) activity.engine?.setVideoFileSource(sceneVideoPath)
+            else activity.engine?.useCameraSource()
+        }
+    }
+
     fun selectScene(target: String) {
         if (target == scene) return
         val existing = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
         existing[scene] = SceneDraft(
-            caption, caption2, caption3, chroma, visualFilter, sensitivity, imagePlacements, imagePaths
+            caption, caption2, caption3, chroma, visualFilter, sensitivity, imagePlacements, imagePaths, sceneVideoPath
         )
         val targetDraft = existing[target] ?: SceneDraft()
         sceneDraftsRaw = SceneDraftStore.encode(existing)
@@ -318,6 +358,7 @@ private fun NovaStreamApp(activity: MainActivity) {
         sensitivity = targetDraft.sensitivity
         imagePlacementsRaw = SceneDraftStore.encodePlacements(targetDraft.imagePlacements)
         imagePathsRaw = SceneDraftStore.encodePaths(targetDraft.imagePaths)
+        sceneVideoPath = targetDraft.videoPath
         selectedImageLayer = 0
     }
 
@@ -424,6 +465,9 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onCaptionChange = { caption = it },
                         onApplyText = { applyComposition() },
                         onPickImage = { imagePicker.launch("image/*") },
+                        videoLoaded = sceneVideoPath.isNotBlank(),
+                        onPickVideo = { videoPicker.launch("video/*") },
+                        onRemoveVideo = { sceneVideoPath = ""; if (!screenMode) activity.engine?.useCameraSource() },
                         imageLoaded = imageLoaded,
                         imageCount = imageCount,
                         selectedImageLayer = selectedImageLayer,
@@ -785,6 +829,9 @@ private fun SourcesPage(
     onThirdCaptionChange: (String) -> Unit,
     onApplyText: () -> Unit,
     onPickImage: () -> Unit,
+    videoLoaded: Boolean,
+    onPickVideo: () -> Unit,
+    onRemoveVideo: () -> Unit,
     imageLoaded: Boolean,
     imageCount: Int,
     selectedImageLayer: Int,
@@ -810,6 +857,22 @@ private fun SourcesPage(
     engineReady: Boolean
 ) {
     val activePlacement = imagePlacements.getOrNull(selectedImageLayer) ?: ImageLayerPlacement()
+    StudioCard {
+        Text("VÍDEO DA CENA", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "Selecione um arquivo de vídeo para ocupar a tela da transmissão em loop. O áudio do arquivo ainda não é mixado; o microfone continua sendo a fonte de áudio.",
+            color = Muted, fontSize = 10.sp
+        )
+        OutlinedButton(onClick = onPickVideo, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text(if (videoLoaded) "TROCAR VÍDEO DESTA CENA" else "ADICIONAR VÍDEO À CENA")
+        }
+        if (videoLoaded) {
+            Text("Vídeo salvo nesta cena", color = Gold, fontSize = 10.sp)
+            OutlinedButton(onClick = onRemoveVideo, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+                Text("REMOVER VÍDEO E VOLTAR À CÂMERA")
+            }
+        }
+    }
     StudioCard {
         Text("FONTES E SOBREPOSIÇÕES", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text("Adicione elementos que entram na composição enviada ao encoder.", color = Muted, fontSize = 10.sp)
