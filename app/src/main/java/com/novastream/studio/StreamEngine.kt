@@ -142,6 +142,21 @@ class StreamEngine(
         }
     }
 
+    fun onScreenCaptureEndedBySystem() {
+        if (!screenCaptureActive) return
+        try {
+            stream.changeVideoSource(Camera2Source(appContext))
+            stream.changeAudioSource(MicrophoneSource())
+            setMicrophoneGain(micGain)
+            if (muted) setMicrophoneMuted(true)
+            screenCaptureActive = false
+            publish("A captura de tela foi encerrada pelo Android · câmera restaurada")
+        } catch (error: Exception) {
+            screenCaptureActive = false
+            publish("A captura foi encerrada: ${error.localizedMessage ?: "fonte indisponível"}")
+        }
+    }
+
     fun stopScreenCapture() {
         if (!screenCaptureActive) {
             ScreenProjectionService.stop(appContext)
