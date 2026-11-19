@@ -6,12 +6,16 @@ import android.graphics.Color as AndroidColor
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
+import android.media.projection.MediaProjection
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.gl.render.filters.BlackFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.TextObjectFilterRender
 import com.pedro.encoder.input.sources.video.Camera2Source
+import com.pedro.encoder.input.sources.video.ScreenSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
+import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.utils.gl.TranslateTo
 import com.pedro.library.base.recording.RecordController
 import com.pedro.library.generic.GenericStream
@@ -43,6 +47,8 @@ class StreamEngine(
     var connecting: Boolean = false
         private set
     var recording: Boolean = false
+        private set
+    var screenCaptureActive: Boolean = false
         private set
     var muted: Boolean = false
         private set
@@ -102,6 +108,50 @@ class StreamEngine(
             publish("Câmera alternada")
         } catch (error: Exception) {
             publish("Não foi possível trocar a câmera: ${error.localizedMessage ?: "erro"}")
+        }
+    }
+
+
+    /**
+     * Switches the video source from the camera to the Android display.
+     * Android 10+ also mixes app playback audio with the microphone.
+     */
+    fun startScreenCapture(projection: MediaProjection) {
+        if (!prepared) {
+            publish("Prepare o estúdio antes de compartilhar a tela")
+            return
+        }
+        if (screenCaptureActive) return
+        try {
+            stream.changeVideoSource(ScreenSource(appContext, projection))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                stream.changeAudioSource(MixAudioSource(projection))
+            }
+            screenCaptureActive = true
+            publish("Captura de tela ativa · abra o jogo ou aplicativo que deseja transmitir")
+        } catch (error: Exception) {
+            screenCaptureActive = false
+            try { stream.changeVideoSource(Camera2Source(appContext)) } catch (_: Exception) {}
+            try { stream.changeAudioSource(MicrophoneSource()) } catch (_: Exception) {}
+            publish("Não foi possível iniciar a captura: ${error.localizedMessage ?: "erro de projeção"}")
+            ScreenProjectionService.stop(appContext)
+        }
+    }
+
+    fun stopScreenCapture() {
+        if (!screenCaptureActive) {
+            ScreenProjectionService.stop(appContext)
+            return
+        }
+        try {
+            stream.changeVideoSource(Camera2Source(appContext))
+            stream.changeAudioSource(MicrophoneSource())
+            screenCaptureActive = false
+            publish("Captura encerrada · câmera restaurada")
+        } catch (error: Exception) {
+            publish("Falha ao voltar para a câmera: ${error.localizedMessage ?: "erro"}")
+        } finally {
+            ScreenProjectionService.stop(appContext)
         }
     }
 
@@ -290,6 +340,7 @@ class StreamEngine(
             stream.release()
         } catch (_: Exception) {
         }
+        if (screenCaptureActive) stopScreenCapture()
         currentImage?.recycle()
         currentImage = null
         chromaBackground?.recycle()
