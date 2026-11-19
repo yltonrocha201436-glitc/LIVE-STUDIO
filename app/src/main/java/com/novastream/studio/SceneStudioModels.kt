@@ -10,7 +10,8 @@ data class SceneDraft(
     val chroma: Boolean = false,
     val visualFilter: String = "Normal",
     val sensitivity: Float = 0.72f,
-    val imagePlacements: List<ImageLayerPlacement> = emptyList()
+    val imagePlacements: List<ImageLayerPlacement> = emptyList(),
+    val imagePaths: List<String> = emptyList()
 )
 
 data class ImageLayerPlacement(
@@ -36,7 +37,8 @@ object SceneDraftStore {
                     chroma = value.optBoolean("chroma", false),
                     visualFilter = value.optString("visualFilter", "Normal"),
                     sensitivity = value.optDouble("sensitivity", 0.72).toFloat().coerceIn(0.1f, 1f),
-                    imagePlacements = decodePlacements(value.optJSONArray("imagePlacements")?.toString() ?: "")
+                    imagePlacements = decodePlacements(value.optJSONArray("imagePlacements")?.toString() ?: ""),
+                    imagePaths = decodeStrings(value.optJSONArray("imagePaths"))
                 )
             }
             result
@@ -55,9 +57,20 @@ object SceneDraftStore {
                 .put("chroma", draft.chroma)
                 .put("visualFilter", draft.visualFilter)
                 .put("sensitivity", draft.sensitivity.toDouble())
-                .put("imagePlacements", JSONArray(encodePlacements(draft.imagePlacements))))
+                .put("imagePlacements", JSONArray(encodePlacements(draft.imagePlacements)))
+                .put("imagePaths", JSONArray().apply { draft.imagePaths.take(5).forEach { put(it) } }))
         }
         return root.toString()
+    }
+
+    private fun decodeStrings(array: JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until minOf(array.length(), 5)) {
+                val path = array.optString(index, "")
+                if (path.isNotBlank()) add(path)
+            }
+        }
     }
 
     fun encodePlacements(placements: List<ImageLayerPlacement>): String {
