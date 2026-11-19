@@ -108,6 +108,8 @@ private fun NovaStreamApp(activity: MainActivity) {
     var sensitivity by rememberSaveable { mutableFloatStateOf(initialDraft?.sensitivity ?: prefs.getFloat("chroma_sensitivity", 0.72f)) }
     var imagePlacementsRaw by rememberSaveable { mutableStateOf(SceneDraftStore.encodePlacements(initialDraft?.imagePlacements ?: emptyList())) }
     val imagePlacements = remember(imagePlacementsRaw) { SceneDraftStore.decodePlacements(imagePlacementsRaw) }
+    var imagePathsRaw by rememberSaveable { mutableStateOf(SceneDraftStore.encodePaths(initialDraft?.imagePaths ?: emptyList())) }
+    val imagePaths = remember(imagePathsRaw) { SceneDraftStore.decodePaths(imagePathsRaw) }
     var selectedImageLayer by rememberSaveable { mutableIntStateOf(0) }
     var micGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("mic_gain", 1f)) }
     var systemGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("system_gain", 1f)) }
@@ -119,6 +121,23 @@ private fun NovaStreamApp(activity: MainActivity) {
     var chromaBackgroundLoaded by remember { mutableStateOf(false) }
     var screenMode by remember { mutableStateOf(false) }
 
+    fun saveSceneImage(bitmap: Bitmap): String? {
+        return try {
+            val folder = java.io.File(context.filesDir, "scene_media")
+            if (!folder.exists() && !folder.mkdirs()) return null
+            val file = java.io.File.createTempFile("layer_", ".png", folder)
+            java.io.FileOutputStream(file).use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                    file.delete()
+                    return null
+                }
+            }
+            file.absolutePath
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw, imagePlacementsRaw) {
         val savedDrafts = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
         savedDrafts[scene] = SceneDraft(
@@ -128,7 +147,8 @@ private fun NovaStreamApp(activity: MainActivity) {
             chroma = chroma,
             visualFilter = visualFilter,
             sensitivity = sensitivity,
-            imagePlacements = imagePlacements
+            imagePlacements = imagePlacements,
+            imagePaths = imagePaths
         )
         val encodedDrafts = SceneDraftStore.encode(savedDrafts)
         if (encodedDrafts != sceneDraftsRaw) sceneDraftsRaw = encodedDrafts
@@ -180,7 +200,12 @@ private fun NovaStreamApp(activity: MainActivity) {
                 context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             }
             if (bitmaps.isNotEmpty()) {
+                val storedPaths = bitmaps.mapNotNull { saveSceneImage(it) }
+                if (storedPaths.size != bitmaps.size) {
+                    activity.engineMessage = "Algumas imagens não puderam ser salvas no armazenamento do estúdio"
+                }
                 activity.engine?.setImages(bitmaps)
+                imagePathsRaw = SceneDraftStore.encodePaths(storedPaths)
                 imageCount = bitmaps.size
                 imageLoaded = true
                 val defaults = bitmaps.indices.map { index ->
@@ -267,10 +292,19 @@ private fun NovaStreamApp(activity: MainActivity) {
         activity.engine?.setImagePlacements(imagePlacements)
     }
 
+    LaunchedEffect(activity.engine, scene, imagePathsRaw) {
+        val restored = imagePaths.mapNotNull { path -> BitmapFactory.decodeFile(path) }
+        activity.engine?.setImages(restored)
+        imageCount = restored.size
+        imageLoaded = restored.isNotEmpty()
+    }
+
     fun selectScene(target: String) {
         if (target == scene) return
         val existing = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
-        existing[scene] = SceneDraft(caption, caption2, caption3, chroma, visualFilter, sensitivity, imagePlacements)
+        existing[scene] = SceneDraft(
+            caption, caption2, caption3, chroma, visualFilter, sensitivity, imagePlacements, imagePaths
+        )
         val targetDraft = existing[target] ?: SceneDraft()
         sceneDraftsRaw = SceneDraftStore.encode(existing)
         scene = target
@@ -281,6 +315,7 @@ private fun NovaStreamApp(activity: MainActivity) {
         visualFilter = targetDraft.visualFilter
         sensitivity = targetDraft.sensitivity
         imagePlacementsRaw = SceneDraftStore.encodePlacements(targetDraft.imagePlacements)
+        imagePathsRaw = SceneDraftStore.encodePaths(targetDraft.imagePaths)
         selectedImageLayer = 0
     }
 
@@ -383,6 +418,8 @@ private fun NovaStreamApp(activity: MainActivity) {
                         },
                         onClearImages = {
                             activity.engine?.clearImages()
+                            imagePathsRaw = SceneDraftStore.encodePaths(emptyList())
+                            imagePlacementsRaw = SceneDraftStore.encodePlacements(emptyList())
                             imageCount = 0
                             imageLoaded = false
                         },
