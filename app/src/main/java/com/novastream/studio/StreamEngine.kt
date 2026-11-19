@@ -9,8 +9,8 @@ import android.os.Looper
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.gl.render.filters.BlackFilterRender
 import com.pedro.encoder.input.gl.render.filters.ChromaFilterRender
-import com.pedro.encoder.input.gl.render.filters.object.ImageObjectFilterRender
-import com.pedro.encoder.input.gl.render.filters.object.TextObjectFilterRender
+import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
+import com.pedro.encoder.input.gl.render.filters.`object`.TextObjectFilterRender
 import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.utils.gl.TranslateTo
@@ -146,7 +146,7 @@ class StreamEngine(
             }
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val file = File(novaFolder, "NovaStream_$stamp.mp4")
-            stream.startRecord(file.absolutePath, object : RecordController.Listener {
+            stream.startRecord(file.absolutePath, listener = object : RecordController.Listener {
                 override fun onStatusChange(status: RecordController.Status) {
                     when (status) {
                         RecordController.Status.STARTED,
