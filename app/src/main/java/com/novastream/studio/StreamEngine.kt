@@ -53,6 +53,7 @@ class StreamEngine(
     private var currentScene = "Câmera"
     private var currentCaption = ""
     private var currentImage: Bitmap? = null
+    private var chromaKeyBitmap: Bitmap? = null
     private var chromaEnabled = false
     private var chromaSensitivity = 0.72f
     private var micGain = 1.0f
@@ -238,14 +239,15 @@ class StreamEngine(
 
             // Chroma key por GPU. O bitmap verde define a cor a remover.
             if (currentScene == "Câmera" && chromaEnabled) {
-                val keyBitmap = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
-                keyBitmap.eraseColor(AndroidColor.rgb(0, 255, 0))
+                val keyBitmap = chromaKeyBitmap ?: Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).also {
+                    it.eraseColor(AndroidColor.rgb(0, 255, 0))
+                    chromaKeyBitmap = it
+                }
                 val chroma = ChromaFilterRender().apply {
                     setImage(keyBitmap)
                     setSensitive(chromaSensitivity)
                 }
                 gl.addFilter(chroma)
-                keyBitmap.recycle()
             }
 
             currentImage?.let { bitmap ->
@@ -283,6 +285,8 @@ class StreamEngine(
         }
         currentImage?.recycle()
         currentImage = null
+        chromaKeyBitmap?.recycle()
+        chromaKeyBitmap = null
         prepared = false
         live = false
         recording = false
