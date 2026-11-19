@@ -1,0 +1,28 @@
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.21.4
+    container_name: novastream-mediamtx
+    restart: unless-stopped
+    command: ["/etc/mediamtx/mediamtx.yml"]
+    volumes:
+      - ./mediamtx.yml:/etc/mediamtx/mediamtx.yml:ro
+    ports:
+      - "1935:1935"
+
+  restream:
+    image: jrottenberg/ffmpeg:9-ubuntu
+    container_name: novastream-restream
+    restart: unless-stopped
+    depends_on:
+      - mediamtx
+    entrypoint: ["/bin/bash", "/scripts/restream.sh"]
+    volumes:
+      - ./restream.sh:/scripts/restream.sh:ro
+    environment:
+      SOURCE_URL: ${SOURCE_URL:-rtmp://mediamtx:1935/stream?user=nova&pass=CHANGE_THIS_PASSWORD}
+      YOUTUBE_RTMP: ${YOUTUBE_RTMP:-}
+      TIKTOK_RTMP: ${TIKTOK_RTMP:-}
+      TWITCH_RTMP: ${TWITCH_RTMP:-}
+      FACEBOOK_RTMP: ${FACEBOOK_RTMP:-}
+      KICK_RTMP: ${KICK_RTMP:-}
+      CUSTOM_RTMP: ${CUSTOM_RTMP:-}
