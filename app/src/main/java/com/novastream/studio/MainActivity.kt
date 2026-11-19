@@ -1,6 +1,7 @@
 package com.novastream.studio
 
 import android.Manifest
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.app.Activity
@@ -98,6 +99,8 @@ private fun NovaStreamApp(activity: MainActivity) {
     var bitrate by remember { mutableFloatStateOf(3.5f) }
     var muted by remember { mutableStateOf(false) }
     var imageLoaded by remember { mutableStateOf(false) }
+    var mouthClosedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var mouthOpenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var chromaBackgroundLoaded by remember { mutableStateOf(false) }
     var screenMode by remember { mutableStateOf(false) }
 
@@ -144,6 +147,36 @@ private fun NovaStreamApp(activity: MainActivity) {
                 }
             } catch (error: Exception) {
                 activity.engineMessage = "Erro ao carregar imagem"
+            }
+        }
+    }
+
+    val mouthClosedPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    mouthClosedBitmap = bitmap
+                    activity.engine?.setPngTuberImages(mouthClosedBitmap, mouthOpenBitmap)
+                    activity.engineMessage = if (mouthOpenBitmap != null) "PNGTuber configurado" else "Imagem da boca fechada carregada; escolha a boca aberta"
+                }
+            } catch (error: Exception) {
+                activity.engineMessage = "Não foi possível carregar a imagem da boca fechada"
+            }
+        }
+    }
+
+    val mouthOpenPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    mouthOpenBitmap = bitmap
+                    activity.engine?.setPngTuberImages(mouthClosedBitmap, mouthOpenBitmap)
+                    activity.engineMessage = if (mouthClosedBitmap != null) "PNGTuber configurado · boca reage ao microfone" else "Imagem da boca aberta carregada; escolha a boca fechada"
+                }
+            } catch (error: Exception) {
+                activity.engineMessage = "Não foi possível carregar a imagem da boca aberta"
             }
         }
     }
@@ -261,6 +294,10 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onApplyText = { applyComposition() },
                         onPickImage = { imagePicker.launch("image/*") },
                         imageLoaded = imageLoaded,
+                        onPickMouthClosed = { mouthClosedPicker.launch("image/*") },
+                        onPickMouthOpen = { mouthOpenPicker.launch("image/*") },
+                        mouthClosedLoaded = mouthClosedBitmap != null,
+                        mouthOpenLoaded = mouthOpenBitmap != null,
                         onPickChromaBackground = { chromaBackgroundPicker.launch("image/*") },
                         chromaBackgroundLoaded = chromaBackgroundLoaded,
                         chroma = chroma,
@@ -325,7 +362,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.6.0", color = Muted, fontSize = 9.sp)
+            Text("v0.7.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
@@ -519,6 +556,10 @@ private fun SourcesPage(
     onApplyText: () -> Unit,
     onPickImage: () -> Unit,
     imageLoaded: Boolean,
+    onPickMouthClosed: () -> Unit,
+    onPickMouthOpen: () -> Unit,
+    mouthClosedLoaded: Boolean,
+    mouthOpenLoaded: Boolean,
     onPickChromaBackground: () -> Unit,
     chromaBackgroundLoaded: Boolean,
     chroma: Boolean,
@@ -544,6 +585,28 @@ private fun SourcesPage(
         OutlinedButton(onClick = onPickImage, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
             Text(if (imageLoaded) "TROCAR IMAGEM / LOGO" else "ADICIONAR IMAGEM / LOGO")
         }
+    }
+    StudioCard {
+        Text("AVATAR 2D · PNGTUBER", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Escolha duas imagens PNG transparentes do mesmo personagem. A boca alterna quando o microfone detecta voz.",
+            color = Muted, fontSize = 10.sp)
+        OutlinedButton(onClick = onPickMouthClosed, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text(if (mouthClosedLoaded) "TROCAR BOCA FECHADA" else "ESCOLHER PNG · BOCA FECHADA")
+        }
+        OutlinedButton(onClick = onPickMouthOpen, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text(if (mouthOpenLoaded) "TROCAR BOCA ABERTA" else "ESCOLHER PNG · BOCA ABERTA")
+        }
+        Text(
+            when {
+                mouthClosedLoaded && mouthOpenLoaded -> "PNGTuber pronto · fala detectada pelo microfone"
+                mouthClosedLoaded || mouthOpenLoaded -> "Falta selecionar a segunda imagem"
+                else -> "Nenhum avatar selecionado"
+            },
+            color = Muted,
+            fontSize = 10.sp
+        )
+        Text("Este modo é PNGTuber 2D. Rastreamento facial e modelos 3D VRM ainda não estão disponíveis.",
+            color = Muted, fontSize = 10.sp)
     }
     StudioCard {
         Text("EFEITOS DE CÂMERA", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
