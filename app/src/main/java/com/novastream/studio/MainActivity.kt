@@ -92,6 +92,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     var chroma by remember { mutableStateOf(false) }
     var sensitivity by remember { mutableFloatStateOf(0.72f) }
     var micGain by remember { mutableFloatStateOf(1f) }
+    var systemGain by remember { mutableFloatStateOf(1f) }
     var bitrate by remember { mutableFloatStateOf(3.5f) }
     var muted by remember { mutableStateOf(false) }
     var imageLoaded by remember { mutableStateOf(false) }
@@ -281,6 +282,12 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onMuteChange = {
                             muted = it
                             activity.engine?.setMicrophoneMuted(it)
+                        },
+                        screenMode = screenMode,
+                        systemGain = systemGain,
+                        onSystemGainChange = {
+                            systemGain = it
+                            activity.engine?.setSystemAudioGain(it)
                         }
                     )
                     StudioTab.SETTINGS -> SettingsPage(
@@ -562,7 +569,10 @@ private fun AudioPage(
     gain: Float,
     onGainChange: (Float) -> Unit,
     muted: Boolean,
-    onMuteChange: (Boolean) -> Unit
+    onMuteChange: (Boolean) -> Unit,
+    screenMode: Boolean,
+    systemGain: Float,
+    onSystemGainChange: (Float) -> Unit
 ) {
     StudioCard {
         Text("MIXER DE ÁUDIO", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -575,13 +585,19 @@ private fun AudioPage(
         }
         Text(if (muted) "Microfone silenciado" else "Ganho: ${(gain * 100).toInt()}%", color = Muted, fontSize = 10.sp)
         Slider(value = gain, onValueChange = onGainChange, valueRange = 0f..2f)
+        if (screenMode) {
+            Divider(color = Color(0xFF363636))
+            Text("ÁUDIO INTERNO DO JOGO / APLICATIVO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Ganho: ${(systemGain * 100).toInt()}%", color = Muted, fontSize = 10.sp)
+            Slider(value = systemGain, onValueChange = onSystemGainChange, valueRange = 0f..2f)
+        }
     }
     StudioCard {
         Text("PROCESSAMENTO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Text("Cancelamento de eco e supressão de ruído são solicitados ao Android na preparação da entrada de microfone.",
             color = Muted, fontSize = 10.sp)
         Divider(color = Color(0xFF363636))
-        Text("Áudio interno do jogo e canais separados (música / alertas) serão adicionados com captura de tela e mixer PCM dedicado.",
+        Text(if (screenMode) "O modo de captura mistura o microfone e o áudio interno autorizado pelo Android. Aplicativos protegidos podem impedir a captura do próprio áudio." else "Ao ativar a captura de tela, o áudio interno do jogo será disponibilizado neste mixer. Canais separados de música e alertas exigem fontes adicionais.",
             color = Muted, fontSize = 10.sp)
     }
 }
