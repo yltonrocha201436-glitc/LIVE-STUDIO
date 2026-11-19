@@ -2,7 +2,7 @@
 
 Aplicativo Android nativo em Kotlin + Jetpack Compose com motor de mídia RootEncoder.
 
-## Versão 0.6.0
+## Versão 0.7.0
 
 ### Recursos implementados
 - Estúdio móvel dividido em Ao Vivo, Cenas, Fontes, Áudio e Ajustes.
@@ -16,6 +16,8 @@ Aplicativo Android nativo em Kotlin + Jetpack Compose com motor de mídia RootEn
 - Composição OpenGL com cenas de câmera / intervalo / tela preta.
 - Sobreposição de texto e imagem/logotipo no vídeo codificado.
 - Filtro Chroma Key GPU que remove verde da câmera e substitui pelo fundo escolhido.
+- Filtros GPU de beleza, sépia, preto e branco e saturação.
+- PNGTuber 2D com imagens de boca aberta/fechada e deteção de voz no microfone.
 - Controle de mute, ganho de microfone, bitrate e estado de conexão.
 
 ### Multistream por relay
