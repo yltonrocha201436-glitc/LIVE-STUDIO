@@ -3,6 +3,8 @@ package com.novastream.studio
 import android.Manifest
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.app.Activity
+import android.media.projection.MediaProjectionManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -94,6 +96,28 @@ private fun NovaStreamApp(activity: MainActivity) {
     var muted by remember { mutableStateOf(false) }
     var imageLoaded by remember { mutableStateOf(false) }
     var chromaBackgroundLoaded by remember { mutableStateOf(false) }
+    var screenMode by remember { mutableStateOf(false) }
+
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (result.resultCode == Activity.RESULT_OK && data != null) {
+            ProjectionSession.onReady = { projection ->
+                activity.engine?.startScreenCapture(projection)
+                screenMode = activity.engine?.screenCaptureActive == true
+                activity.engineMessage = activity.engine?.status ?: "Captura de tela ativa"
+            }
+            ProjectionSession.onFailure = { message ->
+                screenMode = false
+                activity.engineMessage = message
+            }
+            ScreenProjectionService.start(context, result.resultCode, data)
+        } else {
+            activity.engineMessage = "Compartilhamento de tela cancelado"
+            screenMode = false
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -204,6 +228,15 @@ private fun NovaStreamApp(activity: MainActivity) {
                         permissionsOk = permissionsOk,
                         onRequestPermissions = {
                             permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                        },
+                        screenMode = screenMode,
+                        onStartScreenCapture = {
+                            val manager = context.getSystemService(android.content.Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                            screenCaptureLauncher.launch(manager.createScreenCaptureIntent())
+                        },
+                        onStopScreenCapture = {
+                            activity.engine?.stopScreenCapture()
+                            screenMode = false
                         }
                     )
                     StudioTab.SCENES -> ScenesPage(
@@ -277,7 +310,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.5.0", color = Muted, fontSize = 9.sp)
+            Text("v0.6.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
@@ -304,7 +337,10 @@ private fun LivePage(
     onStartRecord: () -> Unit,
     onStopRecord: () -> Unit,
     permissionsOk: Boolean,
-    onRequestPermissions: () -> Unit
+    onRequestPermissions: () -> Unit,
+    screenMode: Boolean,
+    onStartScreenCapture: () -> Unit,
+    onStopScreenCapture: () -> Unit
 ) {
     val engine = activity.engine
     StudioCard {
@@ -317,7 +353,13 @@ private fun LivePage(
             Modifier.fillMaxWidth().aspectRatio(9f / 12.5f)
                 .background(Color.Black, RoundedCornerShape(14.dp))
         ) {
-            if (engine != null) {
+            if (screenMode) {
+                Column(Modifier.align(Alignment.Center).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("CAPTURA DE TELA ATIVA", color = Gold, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text("Vá para o jogo ou aplicativo que deseja transmitir. O NovaStream continuará capturando a tela.",
+                        color = Muted, fontSize = 11.sp)
+                }
+            } else if (engine != null) {
                 AndroidView(
                     factory = { OpenGlView(it) },
                     update = { activity.attachPreview(it) },
@@ -368,6 +410,21 @@ private fun LivePage(
             Text(if (engine?.live == true) "ENCERRAR TRANSMISSÃO" else if (engine?.connecting == true) "CONECTANDO…" else "INICIAR TRANSMISSÃO",
                 color = if (engine?.live == true) Color.White else Color.Black, fontWeight = FontWeight.Bold)
         }
+        Button(
+            onClick = if (screenMode) onStopScreenCapture else onStartScreenCapture,
+            enabled = engine != null,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (screenMode) Color(0xFF9F2828) else Gold
+            )
+        ) {
+            Text(
+                if (screenMode) "PARAR COMPARTILHAMENTO DE TELA" else "COMPARTILHAR TELA / JOGO",
+                color = if (screenMode) Color.White else Color.Black,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(
                 onClick = if (engine?.recording == true) onStopRecord else onStartRecord,
@@ -389,7 +446,7 @@ private fun LivePage(
             ModeTile("TELA", false, Modifier.weight(1f))
             ModeTile("VTUBER", false, Modifier.weight(1f))
         }
-        Text("Câmera e transmissão RTMP estão ativadas nesta versão. Captura de tela e VTuber estão planejados para módulos separados.",
+        Text("Câmera, captura de tela e transmissão RTMP estão disponíveis. VTuber/VRM ainda está em desenvolvimento.",
             color = Muted, fontSize = 10.sp)
     }
 }
