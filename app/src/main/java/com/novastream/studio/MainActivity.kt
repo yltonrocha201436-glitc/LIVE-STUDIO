@@ -393,7 +393,18 @@ private fun NovaStreamApp(activity: MainActivity) {
                             val cleanName = name.trim().take(28)
                             if (cleanName.isNotBlank() && cleanName !in (listOf("Câmera", "Iniciando", "Intervalo", "Tela preta") + customScenes)) {
                                 customScenesRaw = (customScenes + cleanName).joinToString("\n")
+                                val drafts = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
+                                drafts[cleanName] = SceneDraft()
+                                sceneDraftsRaw = SceneDraftStore.encode(drafts)
+                                selectScene(cleanName)
                             }
+                        },
+                        onDeleteScene = { target ->
+                            if (target == scene) selectScene("Câmera")
+                            val drafts = SceneDraftStore.decode(sceneDraftsRaw).toMutableMap()
+                            drafts.remove(target)
+                            sceneDraftsRaw = SceneDraftStore.encode(drafts)
+                            customScenesRaw = customScenes.filterNot { it == target }.joinToString("\n")
                         },
                         onSelect = { selectScene(it); applyComposition() },
                         caption = caption,
@@ -677,6 +688,7 @@ private fun ScenesPage(
     selected: String,
     availableScenes: List<String>,
     onAddScene: (String) -> Unit,
+    onDeleteScene: (String) -> Unit,
     onSelect: (String) -> Unit,
     caption: String,
     onCaptionChange: (String) -> Unit
@@ -686,14 +698,25 @@ private fun ScenesPage(
         Text("CENAS", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text("Cada cena controla o que é enviado ao preview e ao encoder.", color = Muted, fontSize = 10.sp)
         availableScenes.forEach { item ->
-            Button(
-                onClick = { onSelect(item) },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (selected == item) Gold else Color(0xFF292929)
-                )
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(item, color = if (selected == item) Color.Black else Color.White)
+                Button(
+                    onClick = { onSelect(item) },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selected == item) Gold else Color(0xFF292929)
+                    )
+                ) {
+                    Text(item, color = if (selected == item) Color.Black else Color.White)
+                }
+                if (item !in listOf("Câmera", "Iniciando", "Intervalo", "Tela preta")) {
+                    OutlinedButton(onClick = { onDeleteScene(item) }) {
+                        Text("EXCLUIR", fontSize = 9.sp)
+                    }
+                }
             }
         }
         OutlinedTextField(value = caption, onValueChange = onCaptionChange, modifier = Modifier.fillMaxWidth(),
@@ -705,7 +728,7 @@ private fun ScenesPage(
     }
     StudioCard {
         Text("CENAS PERSONALIZADAS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text("Os nomes das cenas criadas ficam salvos neste aparelho. Cenas personalizadas usam a tela de espera; fontes individuais por cena e layouts arrastáveis ainda não estão implementados.",
+        Text("Cada cena salva seus próprios textos, filtros, chroma key, imagens e posições das camadas. Use o editor de fontes para ajustar cada imagem. As camadas ainda não podem ser arrastadas diretamente com o dedo na prévia.",
             color = Muted, fontSize = 10.sp)
     }
 }
