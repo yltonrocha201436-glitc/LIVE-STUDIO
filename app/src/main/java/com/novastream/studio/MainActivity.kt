@@ -371,6 +371,16 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onPickImage = { imagePicker.launch("image/*") },
                         imageLoaded = imageLoaded,
                         imageCount = imageCount,
+                        selectedImageLayer = selectedImageLayer,
+                        imagePlacements = imagePlacements,
+                        onSelectImageLayer = { selectedImageLayer = it },
+                        onPlacementChange = { index, placement ->
+                            val next = imagePlacements.toMutableList()
+                            while (next.size <= index) next.add(ImageLayerPlacement())
+                            next[index] = placement
+                            imagePlacementsRaw = SceneDraftStore.encodePlacements(next)
+                            applyComposition()
+                        },
                         onClearImages = {
                             activity.engine?.clearImages()
                             imageCount = 0
@@ -664,6 +674,10 @@ private fun SourcesPage(
     onPickImage: () -> Unit,
     imageLoaded: Boolean,
     imageCount: Int,
+    selectedImageLayer: Int,
+    imagePlacements: List<ImageLayerPlacement>,
+    onSelectImageLayer: (Int) -> Unit,
+    onPlacementChange: (Int, ImageLayerPlacement) -> Unit,
     onClearImages: () -> Unit,
     qrContent: String,
     onQrContentChange: (String) -> Unit,
@@ -682,6 +696,7 @@ private fun SourcesPage(
     onSensitivityChange: (Float) -> Unit,
     engineReady: Boolean
 ) {
+    val activePlacement = imagePlacements.getOrNull(selectedImageLayer) ?: ImageLayerPlacement()
     StudioCard {
         Text("FONTES E SOBREPOSIÇÕES", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text("Adicione elementos que entram na composição enviada ao encoder.", color = Muted, fontSize = 10.sp)
@@ -701,6 +716,40 @@ private fun SourcesPage(
             Text("REMOVER TODAS AS IMAGENS")
         }
         Text("Até cinco imagens podem entrar na composição ao mesmo tempo.", color = Muted, fontSize = 10.sp)
+        if (imageCount > 0) {
+            Divider(color = Color(0xFF363636))
+            Text("POSIÇÃO E TAMANHO DA CAMADA", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                (0 until imageCount).forEach { index ->
+                    FilterChip(
+                        selected = selectedImageLayer == index,
+                        onClick = { onSelectImageLayer(index) },
+                        label = { Text("Imagem ${index + 1}", fontSize = 9.sp) }
+                    )
+                }
+            }
+            Text("Horizontal: ${activePlacement.x.toInt()}%", color = Muted, fontSize = 10.sp)
+            Slider(
+                value = activePlacement.x,
+                onValueChange = { onPlacementChange(selectedImageLayer, activePlacement.copy(x = it)) },
+                valueRange = 0f..100f,
+                enabled = engineReady
+            )
+            Text("Vertical: ${activePlacement.y.toInt()}%", color = Muted, fontSize = 10.sp)
+            Slider(
+                value = activePlacement.y,
+                onValueChange = { onPlacementChange(selectedImageLayer, activePlacement.copy(y = it)) },
+                valueRange = 0f..100f,
+                enabled = engineReady
+            )
+            Text("Tamanho: ${activePlacement.scale.toInt()}%", color = Muted, fontSize = 10.sp)
+            Slider(
+                value = activePlacement.scale,
+                onValueChange = { onPlacementChange(selectedImageLayer, activePlacement.copy(scale = it)) },
+                valueRange = 5f..60f,
+                enabled = engineReady
+            )
+        }
     }
     StudioCard {
         Text("QR CODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
