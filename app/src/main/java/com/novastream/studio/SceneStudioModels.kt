@@ -11,7 +11,8 @@ data class SceneDraft(
     val visualFilter: String = "Normal",
     val sensitivity: Float = 0.72f,
     val imagePlacements: List<ImageLayerPlacement> = emptyList(),
-    val imagePaths: List<String> = emptyList()
+    val imagePaths: List<String> = emptyList(),
+    val videoPath: String = ""
 )
 
 data class ImageLayerPlacement(
@@ -38,7 +39,8 @@ object SceneDraftStore {
                     visualFilter = value.optString("visualFilter", "Normal"),
                     sensitivity = value.optDouble("sensitivity", 0.72).toFloat().coerceIn(0.1f, 1f),
                     imagePlacements = decodePlacements(value.optJSONArray("imagePlacements")?.toString() ?: ""),
-                    imagePaths = decodeStrings(value.optJSONArray("imagePaths"))
+                    imagePaths = decodeStrings(value.optJSONArray("imagePaths")),
+                    videoPath = value.optString("videoPath", "")
                 )
             }
             result
@@ -58,7 +60,8 @@ object SceneDraftStore {
                 .put("visualFilter", draft.visualFilter)
                 .put("sensitivity", draft.sensitivity.toDouble())
                 .put("imagePlacements", JSONArray(encodePlacements(draft.imagePlacements)))
-                .put("imagePaths", JSONArray().apply { draft.imagePaths.take(5).forEach { put(it) } }))
+                .put("imagePaths", JSONArray().apply { draft.imagePaths.take(5).forEach { put(it) } })
+                .put("videoPath", draft.videoPath))
         }
         return root.toString()
     }
