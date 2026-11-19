@@ -65,6 +65,7 @@ class StreamEngine(
     private var currentCaption = ""
     private var additionalCaptions: List<String> = emptyList()
     private val currentImages = mutableListOf<Bitmap>()
+    private val currentImagePlacements = mutableListOf<ImageLayerPlacement>()
     private var chromaBackground: Bitmap? = null
     private var avatarClosedBitmap: Bitmap? = null
     private var avatarOpenBitmap: Bitmap? = null
@@ -388,7 +389,22 @@ class StreamEngine(
         return true
     }
 
-    fun clearImages() = setImages(emptyList())
+    fun clearImages() {
+        setImages(emptyList())
+        currentImagePlacements.clear()
+    }
+
+    fun setImagePlacements(placements: List<ImageLayerPlacement>) {
+        currentImagePlacements.clear()
+        currentImagePlacements.addAll(placements.take(5).map {
+            ImageLayerPlacement(
+                x = it.x.coerceIn(0f, 100f),
+                y = it.y.coerceIn(0f, 100f),
+                scale = it.scale.coerceIn(5f, 60f)
+            )
+        })
+        refreshComposition()
+    }
 
     fun setChromaBackground(bitmap: Bitmap?) {
         chromaBackground = bitmap
@@ -467,11 +483,13 @@ class StreamEngine(
             }
             val imagePositions = listOf(5f to 5f, 70f to 5f, 5f to 70f, 70f to 70f, 38f to 38f)
             currentImages.take(5).forEachIndexed { index, bitmap ->
-                val position = imagePositions[index]
+                val fallback = imagePositions[index]
+                val placement = currentImagePlacements.getOrNull(index)
+                    ?: ImageLayerPlacement(fallback.first, fallback.second, 22f)
                 val imageFilter = ImageObjectFilterRender().apply {
                     setImage(bitmap)
-                    setScale(22f, 22f)
-                    setPosition(position.first, position.second)
+                    setScale(placement.scale, placement.scale)
+                    setPosition(placement.x, placement.y)
                     setAlpha(1f)
                 }
                 gl.addFilter(imageFilter)
