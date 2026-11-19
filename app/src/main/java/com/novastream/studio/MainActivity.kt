@@ -93,6 +93,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     var bitrate by remember { mutableFloatStateOf(3.5f) }
     var muted by remember { mutableStateOf(false) }
     var imageLoaded by remember { mutableStateOf(false) }
+    var chromaBackgroundLoaded by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -115,6 +116,22 @@ private fun NovaStreamApp(activity: MainActivity) {
                 }
             } catch (error: Exception) {
                 activity.engineMessage = "Erro ao carregar imagem"
+            }
+        }
+    }
+
+    val chromaBackgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    activity.engine?.setChromaBackground(bitmap)
+                    chromaBackgroundLoaded = true
+                } else {
+                    activity.engineMessage = "Não foi possível abrir o fundo escolhido"
+                }
+            } catch (error: Exception) {
+                activity.engineMessage = "Erro ao carregar o fundo do chroma"
             }
         }
     }
@@ -207,6 +224,8 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onApplyText = { applyComposition() },
                         onPickImage = { imagePicker.launch("image/*") },
                         imageLoaded = imageLoaded,
+                        onPickChromaBackground = { chromaBackgroundPicker.launch("image/*") },
+                        chromaBackgroundLoaded = chromaBackgroundLoaded,
                         chroma = chroma,
                         onChromaChange = {
                             chroma = it
@@ -258,7 +277,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.4.0", color = Muted, fontSize = 9.sp)
+            Text("v0.5.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
@@ -428,6 +447,8 @@ private fun SourcesPage(
     onApplyText: () -> Unit,
     onPickImage: () -> Unit,
     imageLoaded: Boolean,
+    onPickChromaBackground: () -> Unit,
+    chromaBackgroundLoaded: Boolean,
     chroma: Boolean,
     onChromaChange: (Boolean) -> Unit,
     sensitivity: Float,
@@ -454,13 +475,23 @@ private fun SourcesPage(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("CHROMA KEY", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Text("Remoção de fundo verde usando filtro OpenGL", color = Muted, fontSize = 10.sp)
+                Text("Remove o verde da câmera e coloca uma imagem atrás da pessoa usando a GPU", color = Muted, fontSize = 10.sp)
             }
             Switch(checked = chroma, onCheckedChange = onChromaChange, enabled = engineReady)
         }
+        OutlinedButton(
+            onClick = onPickChromaBackground,
+            enabled = engineReady,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (chromaBackgroundLoaded) "TROCAR FUNDO DO CHROMA" else "ESCOLHER IMAGEM DE FUNDO")
+        }
+        Text(if (chromaBackgroundLoaded) "Fundo personalizado carregado" else "Sem fundo escolhido: será usado fundo escuro",
+            color = Muted, fontSize = 10.sp)
         Text("Sensibilidade", color = Color.White, fontSize = 11.sp)
         Slider(value = sensitivity, onValueChange = onSensitivityChange, valueRange = 0.1f..1f, enabled = chroma && engineReady)
-        Text("Use um fundo verde uniforme e boa iluminação. O resultado depende da câmera e da luz.", color = Muted, fontSize = 10.sp)
+        Text("Use tecido verde uniforme, iluminação forte e evite roupas verdes. O recorte depende da iluminação e da câmera.",
+            color = Muted, fontSize = 10.sp)
     }
     StudioCard {
         Text("PRÓXIMAS FONTES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
