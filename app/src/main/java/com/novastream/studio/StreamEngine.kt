@@ -64,6 +64,7 @@ class StreamEngine(
     private var chromaEnabled = false
     private var chromaSensitivity = 0.72f
     private var micGain = 1.0f
+    private var systemAudioGain = 1.0f
 
     fun prepare(): Boolean {
         return try {
@@ -126,6 +127,9 @@ class StreamEngine(
             stream.changeVideoSource(ScreenSource(appContext, projection))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 stream.changeAudioSource(MixAudioSource(projection))
+                setMicrophoneGain(micGain)
+                setSystemAudioGain(systemAudioGain)
+                if (muted) setMicrophoneMuted(true)
             }
             screenCaptureActive = true
             publish("Captura de tela ativa · abra o jogo ou aplicativo que deseja transmitir")
@@ -242,16 +246,28 @@ class StreamEngine(
 
     fun setMicrophoneMuted(value: Boolean) {
         muted = value
-        val microphone = stream.audioSource as? MicrophoneSource
-        if (microphone != null) {
-            if (value) microphone.mute() else microphone.unMute()
+        when (val source = stream.audioSource) {
+            is MicrophoneSource -> {
+                if (value) source.mute() else source.unMute()
+            }
+            is MixAudioSource -> {
+                source.microphoneVolume = if (value) 0f else micGain
+            }
         }
-        publish(if (value) "Microfone silenciado" else "Microfone ativo")
+        publish(if (value) "Microfone silenciado · áudio interno preservado" else "Microfone ativo")
     }
 
     fun setMicrophoneGain(value: Float) {
         micGain = value.coerceIn(0f, 2f)
-        (stream.audioSource as? MicrophoneSource)?.microphoneVolume = micGain
+        when (val source = stream.audioSource) {
+            is MicrophoneSource -> source.microphoneVolume = if (muted) 0f else micGain
+            is MixAudioSource -> source.microphoneVolume = if (muted) 0f else micGain
+        }
+    }
+
+    fun setSystemAudioGain(value: Float) {
+        systemAudioGain = value.coerceIn(0f, 2f)
+        (stream.audioSource as? MixAudioSource)?.internalVolume = systemAudioGain
     }
 
     fun setVideoBitrate(valueMbps: Float) {
