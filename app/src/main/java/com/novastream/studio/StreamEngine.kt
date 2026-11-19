@@ -3,6 +3,7 @@ package com.novastream.studio
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import android.net.Uri
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -18,6 +19,7 @@ import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRende
 import com.pedro.encoder.input.gl.render.filters.`object`.TextObjectFilterRender
 import com.pedro.encoder.input.sources.video.Camera2Source
 import com.pedro.encoder.input.sources.video.ScreenSource
+import com.pedro.encoder.input.sources.video.VideoFileSource
 import com.pedro.encoder.input.sources.audio.MicrophoneSource
 import com.pedro.encoder.input.sources.audio.MixAudioSource
 import com.pedro.encoder.utils.gl.TranslateTo
@@ -60,7 +62,10 @@ class StreamEngine(
         private set
     var sentBitrateKbps: Long = 0
         private set
+    var videoFileActive: Boolean = false
+        private set
 
+    private var currentVideoFilePath: String? = null
     private var currentScene = "Câmera"
     private var currentCaption = ""
     private var additionalCaptions: List<String> = emptyList()
@@ -130,6 +135,45 @@ class StreamEngine(
         }
     }
 
+    fun setVideoFileSource(path: String) {
+        if (!prepared) {
+            publish("Prepare o estúdio antes de reproduzir um vídeo")
+            return
+        }
+        val file = File(path)
+        if (!file.isFile || file.length() <= 0L) {
+            publish("O arquivo de vídeo desta cena não foi encontrado")
+            return
+        }
+        if (videoFileActive && currentVideoFilePath == path) return
+        try {
+            val source = VideoFileSource(appContext, Uri.fromFile(file), loopMode = true)
+            stream.changeVideoSource(source)
+            currentVideoFilePath = path
+            videoFileActive = true
+            refreshComposition()
+            publish("Vídeo da cena reproduzindo em loop · o microfone permanece como áudio")
+        } catch (error: Exception) {
+            videoFileActive = false
+            publish("Não foi possível abrir o vídeo: ${error.localizedMessage ?: "formato não suportado"}")
+        }
+    }
+
+    fun useCameraSource() {
+        if (!prepared) return
+        try {
+            if (stream.videoSource !is Camera2Source) {
+                stream.changeVideoSource(Camera2Source(appContext))
+            }
+            currentVideoFilePath = null
+            videoFileActive = false
+            refreshComposition()
+            publish("Fonte de câmera ativa")
+        } catch (error: Exception) {
+            publish("Não foi possível restaurar a câmera: ${error.localizedMessage ?: "erro"}")
+        }
+    }
+
 
     /**
      * Switches the video source from the camera to the Android display.
@@ -143,6 +187,7 @@ class StreamEngine(
         if (screenCaptureActive) return
         try {
             stream.changeVideoSource(ScreenSource(appContext, projection))
+            videoFileActive = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 stream.changeAudioSource(MixAudioSource(projection))
                 applyPngTuberAudioEffect()
@@ -175,6 +220,7 @@ class StreamEngine(
             // Leave a prepared but inactive camera source. It will open when the user
             // returns to the app and the preview is attached again.
             stream.changeVideoSource(Camera2Source(appContext))
+            videoFileActive = false
             stream.changeAudioSource(MicrophoneSource())
             screenCaptureActive = false
             publish("O Android encerrou a captura. A live foi parada e a câmera será retomada ao voltar ao estúdio.")
@@ -196,6 +242,7 @@ class StreamEngine(
         }
         try {
             stream.changeVideoSource(Camera2Source(appContext))
+            videoFileActive = false
             stream.changeAudioSource(MicrophoneSource())
             applyPngTuberAudioEffect()
             setMicrophoneGain(micGain)
@@ -536,6 +583,8 @@ class StreamEngine(
         chromaBackground?.recycle()
         chromaBackground = null
         prepared = false
+        videoFileActive = false
+        currentVideoFilePath = null
         live = false
         recording = false
     }
