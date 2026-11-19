@@ -364,10 +364,7 @@ private fun NovaStreamApp(activity: MainActivity) {
                         endpoint = endpoint,
                         onEndpointChange = { endpoint = it },
                         scene = scene,
-                        onSceneChange = {
-                            scene = it
-                            applyComposition()
-                        },
+                        onSceneChange = { selectScene(it); applyComposition() },
                         caption = caption,
                         imageCount = imageCount,
                         selectedImageLayer = selectedImageLayer,
@@ -543,7 +540,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.8.0", color = Muted, fontSize = 9.sp)
+            Text("v0.9.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
