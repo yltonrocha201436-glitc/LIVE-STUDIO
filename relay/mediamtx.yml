@@ -1,0 +1,29 @@
+logLevel: info
+
+authMethod: internal
+authInternalUsers:
+  - user: nova
+    pass: CHANGE_THIS_PASSWORD
+    ips: []
+    permissions:
+      - action: publish
+        path: stream
+      - action: read
+        path: stream
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+rtsp: false
+rtmp: true
+rtmpAddress: :1935
+hls: false
+webrtc: false
+srt: false
+
+paths:
+  stream: {}
