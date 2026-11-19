@@ -10,6 +10,10 @@ import android.os.Build
 import android.media.projection.MediaProjection
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.gl.render.filters.BlackFilterRender
+import com.pedro.encoder.input.gl.render.filters.BeautyFilterRender
+import com.pedro.encoder.input.gl.render.filters.SepiaFilterRender
+import com.pedro.encoder.input.gl.render.filters.GreyScaleFilterRender
+import com.pedro.encoder.input.gl.render.filters.SaturationFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.TextObjectFilterRender
 import com.pedro.encoder.input.sources.video.Camera2Source
@@ -63,6 +67,7 @@ class StreamEngine(
     private var chromaBackground: Bitmap? = null
     private var chromaEnabled = false
     private var chromaSensitivity = 0.72f
+    private var currentVisualFilter = "Normal"
     private var micGain = 1.0f
     private var systemAudioGain = 1.0f
 
@@ -328,12 +333,14 @@ class StreamEngine(
         scene: String,
         caption: String,
         chroma: Boolean,
-        sensitivity: Float
+        sensitivity: Float,
+        visualFilter: String = "Normal"
     ) {
         currentScene = scene
         currentCaption = caption
         chromaEnabled = chroma
         chromaSensitivity = sensitivity.coerceIn(0.1f, 1f)
+        currentVisualFilter = visualFilter
         refreshComposition()
     }
 
@@ -356,6 +363,13 @@ class StreamEngine(
                     chromaBackground = it
                 }
                 gl.addFilter(ChromaKeyReplaceFilter(background, chromaSensitivity))
+            }
+
+            when (currentVisualFilter) {
+                "Beleza" -> gl.addFilter(BeautyFilterRender())
+                "Sépia" -> gl.addFilter(SepiaFilterRender())
+                "P&B" -> gl.addFilter(GreyScaleFilterRender())
+                "Vibrante" -> gl.addFilter(SaturationFilterRender().apply { setSaturation(1.45f) })
             }
 
             currentImage?.let { bitmap ->
