@@ -258,7 +258,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.3.0", color = Muted, fontSize = 9.sp)
+            Text("v0.4.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
@@ -340,13 +340,13 @@ private fun LivePage(
             color = Muted, fontSize = 10.sp)
         Button(
             onClick = if (engine?.live == true) onStopLive else onStartLive,
-            enabled = engine != null && (engine.live || endpoint.isNotBlank()),
+            enabled = engine != null && (engine.live || (!engine.connecting && endpoint.isNotBlank())),
             modifier = Modifier.fillMaxWidth().height(48.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (engine?.live == true) Color(0xFF9F2828) else Gold
             )
         ) {
-            Text(if (engine?.live == true) "ENCERRAR TRANSMISSÃO" else "INICIAR TRANSMISSÃO",
+            Text(if (engine?.live == true) "ENCERRAR TRANSMISSÃO" else if (engine?.connecting == true) "CONECTANDO…" else "INICIAR TRANSMISSÃO",
                 color = if (engine?.live == true) Color.White else Color.Black, fontWeight = FontWeight.Bold)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
