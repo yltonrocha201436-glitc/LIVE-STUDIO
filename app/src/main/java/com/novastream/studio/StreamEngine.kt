@@ -8,7 +8,6 @@ import android.os.Handler
 import android.os.Looper
 import com.pedro.common.ConnectChecker
 import com.pedro.encoder.input.gl.render.filters.BlackFilterRender
-import com.pedro.encoder.input.gl.render.filters.ChromaFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.ImageObjectFilterRender
 import com.pedro.encoder.input.gl.render.filters.`object`.TextObjectFilterRender
 import com.pedro.encoder.input.sources.video.Camera2Source
@@ -55,7 +54,7 @@ class StreamEngine(
     private var currentScene = "Câmera"
     private var currentCaption = ""
     private var currentImage: Bitmap? = null
-    private var chromaKeyBitmap: Bitmap? = null
+    private var chromaBackground: Bitmap? = null
     private var chromaEnabled = false
     private var chromaSensitivity = 0.72f
     private var micGain = 1.0f
@@ -215,7 +214,13 @@ class StreamEngine(
     fun setImage(bitmap: Bitmap?) {
         currentImage = bitmap
         refreshComposition()
-        publish(if (bitmap == null) "Imagem removida" else "Imagem adicionada à composição")
+        publish(if (bitmap == null) "Imagem de sobreposição removida" else "Imagem adicionada à composição")
+    }
+
+    fun setChromaBackground(bitmap: Bitmap?) {
+        chromaBackground = bitmap
+        refreshComposition()
+        publish(if (bitmap == null) "Fundo do chroma removido" else "Fundo do chroma atualizado")
     }
 
     fun setComposition(
@@ -242,17 +247,14 @@ class StreamEngine(
                 gl.addFilter(BlackFilterRender())
             }
 
-            // Chroma key por GPU. O bitmap verde define a cor a remover.
+            // GPU chroma key: remove green pixels from the camera and composes
+            // the selected background beneath the retained foreground.
             if (currentScene == "Câmera" && chromaEnabled) {
-                val keyBitmap = chromaKeyBitmap ?: Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).also {
-                    it.eraseColor(AndroidColor.rgb(0, 255, 0))
-                    chromaKeyBitmap = it
+                val background = chromaBackground ?: Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).also {
+                    it.eraseColor(AndroidColor.rgb(18, 18, 22))
+                    chromaBackground = it
                 }
-                val chroma = ChromaFilterRender().apply {
-                    setImage(keyBitmap)
-                    setSensitive(chromaSensitivity)
-                }
-                gl.addFilter(chroma)
+                gl.addFilter(ChromaKeyReplaceFilter(background, chromaSensitivity))
             }
 
             currentImage?.let { bitmap ->
@@ -290,8 +292,8 @@ class StreamEngine(
         }
         currentImage?.recycle()
         currentImage = null
-        chromaKeyBitmap?.recycle()
-        chromaKeyBitmap = null
+        chromaBackground?.recycle()
+        chromaBackground = null
         prepared = false
         live = false
         recording = false
