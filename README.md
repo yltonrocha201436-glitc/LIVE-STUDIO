@@ -10,22 +10,24 @@ Aplicativo Android nativo em Kotlin + Jetpack Compose, com motor RootEncoder.
 - Captura de tela via MediaProjection com áudio interno permitido pelo Android + microfone.
 - Composição OpenGL compartilhada entre prévia e encoder.
 - Cenas básicas e criação, seleção e exclusão de cenas personalizadas.
-- Configurações próprias por cena: três textos, filtro, chroma key, sensibilidade e fontes de imagem.
+- Configurações próprias por cena: três textos, filtro, chroma key, sensibilidade, imagens e vídeo de fundo.
 - Até cinco imagens por cena, persistidas no armazenamento privado do aplicativo.
-- Controles de posição horizontal, posição vertical e tamanho para cada imagem.
+- Controles de posição e tamanho por controles deslizantes, além de arraste da imagem selecionada diretamente na prévia.
 - QR Code para Pix, site, redes sociais ou texto, adicionado à cena atual.
+- Uma fonte de vídeo em tela cheia por cena, com reprodução em loop e gravação/transmissão pelo encoder.
 - Chroma key por shader GPU, filtros de câmera e PNGTuber 2D por detecção de voz.
 - Controles de mute e ganho de microfone e áudio interno durante captura de tela.
 - Preferências de produção salvas localmente.
 - Bitrate selecionado antes da live aplicado ao conectar; alteração em tempo real durante a live.
 
 ### Limitações atuais
+- O áudio do arquivo de vídeo não é mixado. O microfone permanece como fonte de áudio.
+- Não há playlist de vídeos nem múltiplas fontes de vídeo simultâneas.
+- Não há navegador Web como camada de mídia.
 - Não há login OAuth integrado para YouTube, Twitch, Facebook ou TikTok.
 - Não há chat unificado autenticado, moderação ou alertas oficiais em tempo real.
-- Não há fonte de vídeo/playlist nem navegador Web como camada de mídia.
-- O editor ajusta posição e tamanho das imagens por controles deslizantes; ainda não permite arrastar camadas diretamente na prévia.
-- As cenas personalizadas ainda usam fundo de espera, não fontes de câmera/vídeo independentes e transições avançadas.
 - Não há avatar 3D VRM nem rastreamento facial/gestual.
+- As cenas personalizadas usam fundo de espera quando não têm vídeo selecionado. Ainda faltam fontes de câmera independentes por cena e transições avançadas.
 - Multistream depende do relay externo descrito abaixo; não há envio nativo simultâneo a várias plataformas.
 - Não há replay buffer.
 
@@ -33,7 +35,9 @@ Aplicativo Android nativo em Kotlin + Jetpack Compose, com motor RootEncoder.
 A pasta `relay/` contém exemplo de distribuição RTMP com MediaMTX + FFmpeg para até seis destinos. Exige VPS, configuração e chaves válidas, segurança e testes. Não é login integrado nem função standalone do APK.
 
 ## Build e instalação
-O GitHub Actions executa `gradle assembleDebug` a cada push em `main` e publica o APK de depuração como artefato `NovaStreamStudio-APK`. O APK debug não é uma versão assinada para publicação na Play Store.
+O GitHub Actions executa `gradle assembleDebug` a cada push em `main` e publica o APK de depuração como artefato `NovaStreamStudio-APK`. O APK debug pode ser instalado por sideload em aparelho compatível, mas não é uma versão assinada para publicação na Play Store.
+
+A compilação automatizada foi concluída. A validação funcional em aparelhos Android físicos ainda precisa ser feita.
 
 ## Dependências
 - RootEncoder (Apache-2.0): https://github.com/pedroSG94/RootEncoder
