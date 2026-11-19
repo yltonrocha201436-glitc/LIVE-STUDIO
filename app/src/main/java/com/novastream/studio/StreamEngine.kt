@@ -139,6 +139,7 @@ class StreamEngine(
             try { stream.changeAudioSource(MicrophoneSource()) } catch (_: Exception) {}
             publish("Não foi possível iniciar a captura: ${error.localizedMessage ?: "erro de projeção"}")
             ScreenProjectionService.stop(appContext)
+            if (live) StudioForegroundService.start(appContext)
         }
     }
 
@@ -150,9 +151,11 @@ class StreamEngine(
             setMicrophoneGain(micGain)
             if (muted) setMicrophoneMuted(true)
             screenCaptureActive = false
+            if (live) StudioForegroundService.start(appContext)
             publish("A captura de tela foi encerrada pelo Android · câmera restaurada")
         } catch (error: Exception) {
             screenCaptureActive = false
+            if (live) StudioForegroundService.start(appContext)
             publish("A captura foi encerrada: ${error.localizedMessage ?: "fonte indisponível"}")
         }
     }
@@ -191,9 +194,11 @@ class StreamEngine(
         try {
             connecting = true
             publish("Conectando ao destino…")
+            if (!screenCaptureActive) StudioForegroundService.start(appContext)
             stream.startStream(target)
         } catch (error: Exception) {
             connecting = false
+            StudioForegroundService.stop(appContext)
             publish("Falha ao iniciar transmissão: ${error.localizedMessage ?: "erro"}")
         }
     }
@@ -204,8 +209,10 @@ class StreamEngine(
             stream.stopStream()
             live = false
             connecting = false
+            StudioForegroundService.stop(appContext)
             publish("Transmissão encerrada")
         } catch (error: Exception) {
+            StudioForegroundService.stop(appContext)
             publish("Erro ao encerrar live: ${error.localizedMessage ?: "erro"}")
         }
     }
@@ -374,6 +381,7 @@ class StreamEngine(
             stream.release()
         } catch (_: Exception) {
             if (screenCaptureActive) ScreenProjectionService.stop(appContext)
+            StudioForegroundService.stop(appContext)
         }
         currentImage?.recycle()
         currentImage = null
@@ -408,6 +416,7 @@ class StreamEngine(
         mainHandler.post {
             connecting = false
             live = false
+            StudioForegroundService.stop(appContext)
             status = "Falha na transmissão: $reason"
             onUiUpdate(status)
         }
@@ -417,6 +426,7 @@ class StreamEngine(
         mainHandler.post {
             connecting = false
             live = false
+            StudioForegroundService.stop(appContext)
             status = "Desconectado do servidor"
             onUiUpdate(status)
         }
@@ -426,6 +436,7 @@ class StreamEngine(
         mainHandler.post {
             connecting = false
             live = false
+            StudioForegroundService.stop(appContext)
             status = "Falha de autenticação. Confira a chave de transmissão."
             onUiUpdate(status)
         }
