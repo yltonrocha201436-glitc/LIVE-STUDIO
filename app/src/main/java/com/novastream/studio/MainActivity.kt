@@ -110,6 +110,7 @@ private fun NovaStreamApp(activity: MainActivity) {
                 activity.engineMessage = activity.engine?.status ?: "Captura de tela ativa"
             }
             ProjectionSession.onFailure = { message ->
+                activity.engine?.onScreenCaptureEndedBySystem()
                 screenMode = false
                 activity.engineMessage = message
             }
@@ -384,7 +385,7 @@ private fun LivePage(
                     .background(Color(0xAA000000), RoundedCornerShape(5.dp)).padding(7.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onSwitchCamera, enabled = engine != null, modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = onSwitchCamera, enabled = engine != null && !screenMode, modifier = Modifier.weight(1f)) {
                 Text("TROCAR CÂMERA", fontSize = 10.sp)
             }
             OutlinedButton(onClick = { onSceneChange(if (scene == "Câmera") "Intervalo" else "Câmera") },
@@ -449,8 +450,8 @@ private fun LivePage(
     StudioCard {
         Text("MODOS DO ESTÚDIO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            ModeTile("CÂMERA", true, Modifier.weight(1f))
-            ModeTile("TELA", false, Modifier.weight(1f))
+            ModeTile("CÂMERA", !screenMode, Modifier.weight(1f))
+            ModeTile("TELA", screenMode, Modifier.weight(1f))
             ModeTile("VTUBER", false, Modifier.weight(1f))
         }
         Text("Câmera, captura de tela e transmissão RTMP estão disponíveis. VTuber/VRM ainda está em desenvolvimento.",
