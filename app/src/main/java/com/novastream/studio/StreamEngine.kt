@@ -132,6 +132,7 @@ class StreamEngine(
                 if (muted) setMicrophoneMuted(true)
             }
             screenCaptureActive = true
+            StudioForegroundService.stop(appContext)
             publish("Captura de tela ativa · abra o jogo ou aplicativo que deseja transmitir")
         } catch (error: Exception) {
             screenCaptureActive = false
