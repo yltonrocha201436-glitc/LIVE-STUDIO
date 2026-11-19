@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -367,6 +369,16 @@ private fun NovaStreamApp(activity: MainActivity) {
                             applyComposition()
                         },
                         caption = caption,
+                        imageCount = imageCount,
+                        selectedImageLayer = selectedImageLayer,
+                        imagePlacements = imagePlacements,
+                        onImagePlacementChange = { index, placement ->
+                            val next = imagePlacements.toMutableList()
+                            while (next.size <= index) next.add(ImageLayerPlacement())
+                            next[index] = placement
+                            imagePlacementsRaw = SceneDraftStore.encodePlacements(next)
+                            applyComposition()
+                        },
                         onSwitchCamera = { activity.engine?.switchCamera() },
                         onStartLive = { activity.engine?.startLive(endpoint) },
                         onStopLive = { activity.engine?.stopLive() },
@@ -552,6 +564,10 @@ private fun LivePage(
     scene: String,
     onSceneChange: (String) -> Unit,
     caption: String,
+    imageCount: Int,
+    selectedImageLayer: Int,
+    imagePlacements: List<ImageLayerPlacement>,
+    onImagePlacementChange: (Int, ImageLayerPlacement) -> Unit,
     onSwitchCamera: () -> Unit,
     onStartLive: () -> Unit,
     onStopLive: () -> Unit,
@@ -564,6 +580,9 @@ private fun LivePage(
     onStopScreenCapture: () -> Unit
 ) {
     val engine = activity.engine
+    val latestPlacements = rememberUpdatedState(imagePlacements)
+    val latestSelectedLayer = rememberUpdatedState(selectedImageLayer)
+    val latestMoveCallback = rememberUpdatedState(onImagePlacementChange)
     StudioCard {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("MONITOR DE PROGRAMA", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -591,6 +610,32 @@ private fun LivePage(
                     Text("NOVASTREAM", color = Gold, fontSize = 19.sp, fontWeight = FontWeight.Bold)
                     Text("Aguardando câmera e microfone", color = Muted, fontSize = 10.sp)
                 }
+            }
+            if (imageCount > 0 && !screenMode) {
+                Box(
+                    Modifier.fillMaxSize().pointerInput(Unit) {
+                        detectDragGestures { _, dragAmount ->
+                            val index = latestSelectedLayer.value.coerceIn(0, imageCount - 1)
+                            val current = latestPlacements.value.getOrNull(index) ?: ImageLayerPlacement()
+                            val width = size.width.coerceAtLeast(1)
+                            val height = size.height.coerceAtLeast(1)
+                            latestMoveCallback.value(
+                                index,
+                                current.copy(
+                                    x = (current.x + dragAmount.x * 100f / width).coerceIn(0f, 100f),
+                                    y = (current.y + dragAmount.y * 100f / height).coerceIn(0f, 100f)
+                                )
+                            )
+                        }
+                    }
+                )
+                Text(
+                    "ARRASTE PARA MOVER A IMAGEM ${selectedImageLayer + 1}",
+                    color = Gold,
+                    fontSize = 9.sp,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 38.dp)
+                        .background(Color(0xAA000000), RoundedCornerShape(5.dp)).padding(6.dp)
+                )
             }
             StatusLabel(if (engine?.live == true) "● TRANSMITINDO" else "PRÉVIA", engine?.live == true)
             Text(caption, color = Color.White, fontSize = 10.sp,
