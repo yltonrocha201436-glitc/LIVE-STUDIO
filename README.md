@@ -1,34 +1,33 @@
 # NovaStream Studio
 
-Aplicativo Android nativo em Kotlin e Jetpack Compose. O projeto usa módulos separados para interface e motor de mídia.
+Aplicativo Android nativo em Kotlin + Jetpack Compose com motor de mídia RootEncoder.
 
-## Versão atual: 0.4.0
+## Versão 0.6.0
 
-### Implementado no código
-- Estúdio dividido em cinco áreas: Ao Vivo, Cenas, Fontes, Áudio e Ajustes.
-- Prévia de câmera via OpenGL e câmera frontal/traseira.
-- Motor RootEncoder para transmissão RTMP/RTMPS e SRT.
-- Gravação MP4 local usando o mesmo pipeline de mídia.
-- Composição por GPU com cenas de câmera e tela preta/espera.
-- Sobreposição de texto e imagem/logotipo no fluxo de vídeo.
-- Filtro Chroma Key baseado em OpenGL.
-- Controle de volume e mute do microfone.
-- Cancelamento de eco e supressão de ruído solicitados ao Android.
-- Ajuste dinâmico de bitrate durante transmissão.
-- Pipeline GitHub Actions para gerar APK de teste.
+### Recursos implementados no código
+- Estúdio móvel dividido em Ao Vivo, Cenas, Fontes, Áudio e Ajustes.
+- Câmera frontal e traseira com prévia OpenGL.
+- Transmissão RTMP, RTMPS e SRT para um destino por vez.
+- Gravação MP4 pelo pipeline de mídia.
+- Captura da tela Android usando MediaProjection e serviço em primeiro plano.
+- No Android 10+, mistura de áudio interno permitido pelo sistema com microfone.
+- Controles separados de ganho de microfone e áudio interno durante o modo de tela.
+- Composição OpenGL com cenas de câmera / interval / tela preta.
+- Sobreposição de texto e imagem/logotipo no vídeo codificado.
+- Filtro Chroma Key GPU que remove verde da câmera e substitui pelo fundo escolhido.
+- Controle de mute, ganho de microfone, bitrate e estado de conexão.
 
-### Limitações da versão 0.4.0
-- Um destino RTMP/SRT por vez. Multistream precisa de um relay de servidor ou integração específica.
-- Captura de tela ainda não está integrada.
-- VTuber/VRM e rastreamento facial não estão integrados.
-- Widgets de chat, páginas web, playlists e vídeo como fonte ainda não estão implementados.
-- A transmissão não continua em segundo plano nesta versão.
-- A gravação vai para a pasta privada de filmes do aplicativo.
-- O APK gerado pelo workflow é de depuração e não um pacote assinado para Play Store.
+### Limitações conhecidas
+- Só transmite para um endereço RTMP/SRT por vez. Multistream simultâneo requer relay de servidor ou integrações dedicadas.
+- VTuber/VRM, rastreamento facial, widgets de chat, fontes de página web, playlist de vídeo/música e alertas em tempo real ainda não estão implementados.
+- A tela de captura deve ser autorizada pelo usuário a cada sessão.
+- Áudio de aplicativos pode não ser capturável quando o próprio app de origem bloqueia AudioPlaybackCapture.
+- A prévia da tela é ocultada durante o compartilhamento para evitar o efeito de espelho infinito. Depois de autorizar, abra o jogo ou app que deseja transmitir.
+- Gravação de teste salva na pasta privada do app.
+- O APK do workflow é uma build de depuração, não uma versão assinada para Play Store.
 
 ## Compilação
-O workflow `.github/workflows/build-apk.yml` executa `gradle assembleDebug` no GitHub Actions e publica o artefato `NovaStreamStudio-APK`.
+GitHub Actions executa `gradle assembleDebug` e publica o artefato `NovaStreamStudio-APK`.
 
-## Motor de mídia
-A dependência RootEncoder é distribuída sob Apache License 2.0:
-https://github.com/pedroSG94/RootEncoder
+## Dependência de transmissão
+RootEncoder (Apache License 2.0): https://github.com/pedroSG94/RootEncoder
