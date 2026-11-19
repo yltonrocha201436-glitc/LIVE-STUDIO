@@ -4,30 +4,33 @@ Aplicativo Android nativo em Kotlin + Jetpack Compose com motor de mídia RootEn
 
 ## Versão 0.6.0
 
-### Recursos implementados no código
+### Recursos implementados
 - Estúdio móvel dividido em Ao Vivo, Cenas, Fontes, Áudio e Ajustes.
 - Câmera frontal e traseira com prévia OpenGL.
-- Transmissão RTMP, RTMPS e SRT para um destino por vez.
+- Transmissão RTMP, RTMPS e SRT.
 - Gravação MP4 pelo pipeline de mídia.
 - Captura da tela Android usando MediaProjection e serviço em primeiro plano.
 - No Android 10+, mistura de áudio interno permitido pelo sistema com microfone.
 - Controles separados de ganho de microfone e áudio interno durante o modo de tela.
-- Composição OpenGL com cenas de câmera / interval / tela preta.
+- Serviço em primeiro plano para manter a live de câmera e microfone ao alternar para outro app.
+- Composição OpenGL com cenas de câmera / intervalo / tela preta.
 - Sobreposição de texto e imagem/logotipo no vídeo codificado.
 - Filtro Chroma Key GPU que remove verde da câmera e substitui pelo fundo escolhido.
 - Controle de mute, ganho de microfone, bitrate e estado de conexão.
 
-### Limitações conhecidas
-- Só transmite para um endereço RTMP/SRT por vez. Multistream simultâneo requer relay de servidor ou integrações dedicadas.
-- VTuber/VRM, rastreamento facial, widgets de chat, fontes de página web, playlist de vídeo/música e alertas em tempo real ainda não estão implementados.
+### Multistream por relay
+O app envia um destino RTMP/SRT por conexão. Para replicar a mesma transmissão para até seis destinos, o projeto inclui uma infraestrutura opcional em `/relay` baseada em MediaMTX + FFmpeg. É necessário um VPS/Linux com Docker e as URLs/chaves de transmissão de cada plataforma. Consulte `relay/README.md`.
+
+### Limitações atuais
+- Ainda não tem login OAuth de plataformas, chat unificado, VTuber/VRM, rastreamento facial, widgets web, playlists de vídeo/música ou alertas em tempo real.
 - A tela de captura deve ser autorizada pelo usuário a cada sessão.
-- Áudio de aplicativos pode não ser capturável quando o próprio app de origem bloqueia AudioPlaybackCapture.
-- A prévia da tela é ocultada durante o compartilhamento para evitar o efeito de espelho infinito. Depois de autorizar, abra o jogo ou app que deseja transmitir.
-- Gravação de teste salva na pasta privada do app.
+- O áudio interno pode não ser capturável quando o app de origem bloqueia AudioPlaybackCapture.
+- A prévia da tela é ocultada durante o compartilhamento para evitar espelho infinito. Autorize a captura, inicie a live e depois abra o jogo/app.
+- Gravações de teste ficam na pasta privada do aplicativo.
 - O APK do workflow é uma build de depuração, não uma versão assinada para Play Store.
 
 ## Compilação
 GitHub Actions executa `gradle assembleDebug` e publica o artefato `NovaStreamStudio-APK`.
 
-## Dependência de transmissão
+## Motor de mídia
 RootEncoder (Apache License 2.0): https://github.com/pedroSG94/RootEncoder
