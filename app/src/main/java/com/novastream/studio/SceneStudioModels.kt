@@ -63,6 +63,27 @@ object SceneDraftStore {
         return root.toString()
     }
 
+    fun encodePaths(paths: List<String>): String {
+        val array = JSONArray()
+        paths.take(5).forEach { path -> if (path.isNotBlank()) array.put(path) }
+        return array.toString()
+    }
+
+    fun decodePaths(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until minOf(array.length(), 5)) {
+                    val path = array.optString(index, "")
+                    if (path.isNotBlank()) add(path)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private fun decodeStrings(array: JSONArray?): List<String> {
         if (array == null) return emptyList()
         return buildList {
