@@ -63,7 +63,8 @@ class StreamEngine(
 
     private var currentScene = "Câmera"
     private var currentCaption = ""
-    private var currentImage: Bitmap? = null
+    private var additionalCaptions: List<String> = emptyList()
+    private val currentImages = mutableListOf<Bitmap>()
     private var chromaBackground: Bitmap? = null
     private var avatarClosedBitmap: Bitmap? = null
     private var avatarOpenBitmap: Bitmap? = null
@@ -79,6 +80,7 @@ class StreamEngine(
     private var currentVisualFilter = "Normal"
     private var micGain = 1.0f
     private var systemAudioGain = 1.0f
+    private var requestedVideoBitrateBps = 3_500_000
 
     fun prepare(): Boolean {
         return try {
@@ -323,9 +325,12 @@ class StreamEngine(
     }
 
     fun setVideoBitrate(valueMbps: Float) {
-        val bitsPerSecond = (valueMbps.coerceIn(0.8f, 6.0f) * 1_000_000f).toInt()
+        requestedVideoBitrateBps = (valueMbps.coerceIn(0.8f, 6.0f) * 1_000_000f).toInt()
         if (prepared && stream.isStreaming) {
-            stream.setVideoBitrateOnFly(bitsPerSecond)
+            stream.setVideoBitrateOnFly(requestedVideoBitrateBps)
+            publish("Bitrate alterado durante a transmissão")
+        } else {
+            publish("Bitrate salvo: será aplicado ao conectar")
         }
     }
 
@@ -358,10 +363,32 @@ class StreamEngine(
     }
 
     fun setImage(bitmap: Bitmap?) {
-        currentImage = bitmap
-        refreshComposition()
-        publish(if (bitmap == null) "Imagem de sobreposição removida" else "Imagem adicionada à composição")
+        setImages(if (bitmap == null) emptyList() else listOf(bitmap))
     }
+
+    fun setImages(bitmaps: List<Bitmap>) {
+        val accepted = bitmaps.take(5)
+        currentImages.forEach { old ->
+            if (accepted.none { it === old }) retiredBitmaps.add(old)
+        }
+        currentImages.clear()
+        currentImages.addAll(accepted)
+        refreshComposition()
+        publish("Fontes de imagem: ${currentImages.size}/5")
+    }
+
+    fun addImageOverlay(bitmap: Bitmap): Boolean {
+        if (currentImages.size >= 5) {
+            publish("Limite de cinco imagens atingido. Remova uma fonte antes de adicionar outra.")
+            return false
+        }
+        currentImages.add(bitmap)
+        refreshComposition()
+        publish("Imagem adicionada · ${currentImages.size}/5 fontes")
+        return true
+    }
+
+    fun clearImages() = setImages(emptyList())
 
     fun setChromaBackground(bitmap: Bitmap?) {
         chromaBackground = bitmap
@@ -374,10 +401,12 @@ class StreamEngine(
         caption: String,
         chroma: Boolean,
         sensitivity: Float,
-        visualFilter: String = "Normal"
+        visualFilter: String = "Normal",
+        extraCaptions: List<String> = emptyList()
     ) {
         currentScene = scene
         currentCaption = caption
+        additionalCaptions = extraCaptions.take(2)
         chromaEnabled = chroma
         chromaSensitivity = sensitivity.coerceIn(0.1f, 1f)
         currentVisualFilter = visualFilter
@@ -436,25 +465,29 @@ class StreamEngine(
                 avatarClosedFilter = null
                 avatarOpenFilter = null
             }
-            currentImage?.let { bitmap ->
+            val imagePositions = listOf(5f to 5f, 70f to 5f, 5f to 70f, 70f to 70f, 38f to 38f)
+            currentImages.take(5).forEachIndexed { index, bitmap ->
+                val position = imagePositions[index]
                 val imageFilter = ImageObjectFilterRender().apply {
                     setImage(bitmap)
-                    setScale(26f, 26f)
-                    setPosition(5f, 5f)
+                    setScale(22f, 22f)
+                    setPosition(position.first, position.second)
                     setAlpha(1f)
                 }
                 gl.addFilter(imageFilter)
             }
 
-            if (currentCaption.isNotBlank()) {
-                val textFilter = TextObjectFilterRender().apply {
-                    setText(currentCaption, 34f, AndroidColor.WHITE, AndroidColor.TRANSPARENT)
-                    setScale(86f, 14f)
-                    setPosition(7f, 82f)
-                    setAlpha(1f)
+            (listOf(currentCaption) + additionalCaptions).take(3)
+                .filter { it.isNotBlank() }
+                .forEachIndexed { index, text ->
+                    val textFilter = TextObjectFilterRender().apply {
+                        setText(text, 32f, AndroidColor.WHITE, AndroidColor.TRANSPARENT)
+                        setScale(86f, 12f)
+                        setPosition(7f, (82f - index * 15f).coerceAtLeast(8f))
+                        setAlpha(1f)
+                    }
+                    gl.addFilter(textFilter)
                 }
-                gl.addFilter(textFilter)
-            }
             publish("Composição atualizada · $currentScene")
         } catch (error: Exception) {
             publish("Erro na composição: ${error.localizedMessage ?: "filtro"}")
@@ -474,8 +507,8 @@ class StreamEngine(
             if (screenCaptureActive) ScreenProjectionService.stop(appContext)
             StudioForegroundService.stop(appContext)
         }
-        currentImage?.recycle()
-        currentImage = null
+        currentImages.forEach { runCatching { it.recycle() } }
+        currentImages.clear()
         avatarClosedBitmap?.recycle()
         avatarOpenBitmap?.recycle()
         retiredBitmaps.forEach { runCatching { it.recycle() } }
@@ -504,6 +537,7 @@ class StreamEngine(
         mainHandler.post {
             connecting = false
             live = true
+            runCatching { stream.setVideoBitrateOnFly(requestedVideoBitrateBps) }
             status = "Transmissão ao vivo"
             onUiUpdate(status)
         }
