@@ -428,12 +428,23 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onGenerateQr = {
                             try {
                                 val qrBitmap = QrCodeGenerator.create(qrContent)
+                                val storedPath = saveSceneImage(qrBitmap)
                                 val added = activity.engine?.addImageOverlay(qrBitmap) == true
                                 if (added) {
+                                    if (storedPath != null) {
+                                        imagePathsRaw = SceneDraftStore.encodePaths(imagePaths + storedPath)
+                                    }
+                                    val nextPlacements = imagePlacements.toMutableList()
+                                    nextPlacements.add(ImageLayerPlacement(70f, 70f, 20f))
+                                    imagePlacementsRaw = SceneDraftStore.encodePlacements(nextPlacements)
                                     imageCount = (imageCount + 1).coerceAtMost(5)
                                     imageLoaded = true
-                                    activity.engineMessage = "QR Code adicionado à composição"
-                                } else qrBitmap.recycle()
+                                    activity.engine?.setImagePlacements(nextPlacements)
+                                    activity.engineMessage = if (storedPath != null) "QR Code adicionado e salvo nesta cena" else "QR Code adicionado; não foi possível salvá-lo para a próxima abertura"
+                                } else {
+                                    qrBitmap.recycle()
+                                    if (storedPath != null) java.io.File(storedPath).delete()
+                                }
                             } catch (error: Exception) {
                                 activity.engineMessage = "Não foi possível criar o QR Code: ${error.localizedMessage ?: "texto inválido"}"
                             }
