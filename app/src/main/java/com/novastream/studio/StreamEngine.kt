@@ -65,6 +65,15 @@ class StreamEngine(
     private var currentCaption = ""
     private var currentImage: Bitmap? = null
     private var chromaBackground: Bitmap? = null
+    private var avatarClosedBitmap: Bitmap? = null
+    private var avatarOpenBitmap: Bitmap? = null
+    private val retiredBitmaps = mutableListOf<Bitmap>()
+    private var avatarClosedFilter: ImageObjectFilterRender? = null
+    private var avatarOpenFilter: ImageObjectFilterRender? = null
+    private var pngTuberVoiceActive = false
+    private val pngTuberAudioEffect = PngTuberAudioEffect { active ->
+        mainHandler.post { updatePngTuberMouth(active) }
+    }
     private var chromaEnabled = false
     private var chromaSensitivity = 0.72f
     private var currentVisualFilter = "Normal"
@@ -79,6 +88,7 @@ class StreamEngine(
             val audioReady = stream.prepareAudio(
                 44_100, true, 128_000, true, true
             )
+            if (audioReady) applyPngTuberAudioEffect()
             prepared = videoReady && audioReady
             publish(
                 if (prepared) "Estúdio pronto · 720 × 1280 · 30 FPS"
@@ -132,6 +142,7 @@ class StreamEngine(
             stream.changeVideoSource(ScreenSource(appContext, projection))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 stream.changeAudioSource(MixAudioSource(projection))
+                applyPngTuberAudioEffect()
                 setMicrophoneGain(micGain)
                 setSystemAudioGain(systemAudioGain)
                 if (muted) setMicrophoneMuted(true)
@@ -183,6 +194,7 @@ class StreamEngine(
         try {
             stream.changeVideoSource(Camera2Source(appContext))
             stream.changeAudioSource(MicrophoneSource())
+            applyPngTuberAudioEffect()
             setMicrophoneGain(micGain)
             if (muted) setMicrophoneMuted(true)
             screenCaptureActive = false
@@ -317,6 +329,34 @@ class StreamEngine(
         }
     }
 
+
+    fun setPngTuberImages(mouthClosed: Bitmap?, mouthOpen: Bitmap?) {
+        avatarClosedBitmap?.let { retiredBitmaps.add(it) }
+        avatarOpenBitmap?.let { retiredBitmaps.add(it) }
+        avatarClosedBitmap = mouthClosed
+        avatarOpenBitmap = mouthOpen
+        pngTuberVoiceActive = false
+        refreshComposition()
+        applyPngTuberAudioEffect()
+        publish(
+            if (mouthClosed != null && mouthOpen != null) "PNGTuber ativado · boca reage ao microfone"
+            else "PNGTuber removido"
+        )
+    }
+
+    private fun applyPngTuberAudioEffect() {
+        when (val source = stream.audioSource) {
+            is MicrophoneSource -> source.setAudioEffect(pngTuberAudioEffect)
+            is MixAudioSource -> source.setAudioEffect(pngTuberAudioEffect)
+        }
+    }
+
+    private fun updatePngTuberMouth(voiceActive: Boolean) {
+        pngTuberVoiceActive = voiceActive
+        avatarClosedFilter?.setAlpha(if (voiceActive) 0f else 1f)
+        avatarOpenFilter?.setAlpha(if (voiceActive) 1f else 0f)
+    }
+
     fun setImage(bitmap: Bitmap?) {
         currentImage = bitmap
         refreshComposition()
@@ -372,6 +412,28 @@ class StreamEngine(
                 "Vibrante" -> gl.addFilter(SaturationFilterRender().apply { setSaturation(1.45f) })
             }
 
+
+            if (avatarClosedBitmap != null && avatarOpenBitmap != null) {
+                val closedFilter = ImageObjectFilterRender().apply {
+                    setImage(avatarClosedBitmap)
+                    setScale(27f, 27f)
+                    setPosition(70f, 70f)
+                    setAlpha(if (pngTuberVoiceActive) 0f else 1f)
+                }
+                val openFilter = ImageObjectFilterRender().apply {
+                    setImage(avatarOpenBitmap)
+                    setScale(27f, 27f)
+                    setPosition(70f, 70f)
+                    setAlpha(if (pngTuberVoiceActive) 1f else 0f)
+                }
+                avatarClosedFilter = closedFilter
+                avatarOpenFilter = openFilter
+                gl.addFilter(closedFilter)
+                gl.addFilter(openFilter)
+            } else {
+                avatarClosedFilter = null
+                avatarOpenFilter = null
+            }
             currentImage?.let { bitmap ->
                 val imageFilter = ImageObjectFilterRender().apply {
                     setImage(bitmap)
@@ -412,6 +474,12 @@ class StreamEngine(
         }
         currentImage?.recycle()
         currentImage = null
+        avatarClosedBitmap?.recycle()
+        avatarOpenBitmap?.recycle()
+        retiredBitmaps.forEach { runCatching { it.recycle() } }
+        retiredBitmaps.clear()
+        avatarClosedBitmap = null
+        avatarOpenBitmap = null
         chromaBackground?.recycle()
         chromaBackground = null
         prepared = false
