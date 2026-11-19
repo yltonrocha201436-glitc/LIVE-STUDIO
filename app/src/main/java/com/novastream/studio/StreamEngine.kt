@@ -150,6 +150,8 @@ class StreamEngine(
         try {
             stream.changeVideoSource(Camera2Source(appContext))
             stream.changeAudioSource(MicrophoneSource())
+            setMicrophoneGain(micGain)
+            if (muted) setMicrophoneMuted(true)
             screenCaptureActive = false
             publish("Captura encerrada · câmera restaurada")
         } catch (error: Exception) {
@@ -352,11 +354,12 @@ class StreamEngine(
         try {
             if (stream.isRecording) stream.stopRecord()
             if (stream.isStreaming) stream.stopStream()
+            if (screenCaptureActive) stopScreenCapture()
             if (stream.isOnPreview) stream.stopPreview()
             stream.release()
         } catch (_: Exception) {
+            if (screenCaptureActive) ScreenProjectionService.stop(appContext)
         }
-        if (screenCaptureActive) stopScreenCapture()
         currentImage?.recycle()
         currentImage = null
         chromaBackground?.recycle()
