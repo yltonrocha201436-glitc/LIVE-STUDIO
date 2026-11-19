@@ -41,6 +41,8 @@ class StreamEngine(
         private set
     var live: Boolean = false
         private set
+    var connecting: Boolean = false
+        private set
     var recording: Boolean = false
         private set
     var muted: Boolean = false
@@ -117,18 +119,21 @@ class StreamEngine(
         }
         if (live) return
         try {
-            stream.startStream(target)
+            connecting = true
             publish("Conectando ao destino…")
+            stream.startStream(target)
         } catch (error: Exception) {
+            connecting = false
             publish("Falha ao iniciar transmissão: ${error.localizedMessage ?: "erro"}")
         }
     }
 
     fun stopLive() {
-        if (!live && !stream.isStreaming) return
+        if (!live && !connecting && !stream.isStreaming) return
         try {
             stream.stopStream()
             live = false
+            connecting = false
             publish("Transmissão encerrada")
         } catch (error: Exception) {
             publish("Erro ao encerrar live: ${error.localizedMessage ?: "erro"}")
@@ -305,6 +310,7 @@ class StreamEngine(
 
     override fun onConnectionSuccess() {
         mainHandler.post {
+            connecting = false
             live = true
             status = "Transmissão ao vivo"
             onUiUpdate(status)
@@ -313,6 +319,7 @@ class StreamEngine(
 
     override fun onConnectionFailed(reason: String) {
         mainHandler.post {
+            connecting = false
             live = false
             status = "Falha na transmissão: $reason"
             onUiUpdate(status)
@@ -321,6 +328,7 @@ class StreamEngine(
 
     override fun onDisconnect() {
         mainHandler.post {
+            connecting = false
             live = false
             status = "Desconectado do servidor"
             onUiUpdate(status)
@@ -329,6 +337,7 @@ class StreamEngine(
 
     override fun onAuthError() {
         mainHandler.post {
+            connecting = false
             live = false
             status = "Falha de autenticação. Confira a chave de transmissão."
             onUiUpdate(status)
