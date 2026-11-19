@@ -146,17 +146,26 @@ class StreamEngine(
     fun onScreenCaptureEndedBySystem() {
         if (!screenCaptureActive) return
         try {
+            // Stop encoders first so no camera source is opened while the app is backgrounded.
+            if (stream.isStreaming) stream.stopStream()
+            live = false
+            connecting = false
+            StudioForegroundService.stop(appContext)
+
+            // Leave a prepared but inactive camera source. It will open when the user
+            // returns to the app and the preview is attached again.
             stream.changeVideoSource(Camera2Source(appContext))
             stream.changeAudioSource(MicrophoneSource())
-            setMicrophoneGain(micGain)
-            if (muted) setMicrophoneMuted(true)
             screenCaptureActive = false
-            if (live) StudioForegroundService.start(appContext)
-            publish("A captura de tela foi encerrada pelo Android · câmera restaurada")
+            publish("O Android encerrou a captura. A live foi parada e a câmera será retomada ao voltar ao estúdio.")
         } catch (error: Exception) {
             screenCaptureActive = false
-            if (live) StudioForegroundService.start(appContext)
-            publish("A captura foi encerrada: ${error.localizedMessage ?: "fonte indisponível"}")
+            live = false
+            connecting = false
+            StudioForegroundService.stop(appContext)
+            publish("A permissão de tela terminou: ${error.localizedMessage ?: "a transmissão foi encerrada"}")
+        } finally {
+            ScreenProjectionService.stop(appContext)
         }
     }
 
