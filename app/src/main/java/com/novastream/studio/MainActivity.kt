@@ -1,27 +1,12 @@
 package com.novastream.studio
 
 import android.Manifest
-import android.content.ContentValues
-import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Bundle
-import android.provider.MediaStore
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.FallbackStrategy
-import androidx.camera.video.MediaStoreOutputOptions
-import androidx.camera.video.Quality
-import androidx.camera.video.QualitySelector
-import androidx.camera.video.Recorder
-import androidx.camera.video.Recording
-import androidx.camera.video.VideoCapture
-import androidx.camera.video.VideoRecordEvent
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -31,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -39,199 +23,522 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import android.content.pm.PackageManager
+import com.pedro.library.view.OpenGlView
 
 private val Gold = Color(0xFFD6B15E)
-private val Dark = Color(0xFF090909)
+private val Bg = Color(0xFF090909)
+private val Panel = Color(0xFF191919)
+private val Muted = Color(0xFFB5B5B5)
 
 class MainActivity : ComponentActivity() {
+    var engine: StreamEngine? by mutableStateOf(null)
+        private set
+    var engineMessage by mutableStateOf("Aguardando permissões de câmera e microfone")
+        private set
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { NovaScreen() }
+        setContent { NovaStreamApp(this) }
+    }
+
+    fun prepareEngine() {
+        if (engine != null) return
+        val next = StreamEngine(applicationContext) { message ->
+            engineMessage = message
+        }
+        if (next.prepare()) {
+            engine = next
+            engineMessage = next.status
+        } else {
+            engineMessage = next.status
+            next.release()
+        }
+    }
+
+    fun attachPreview(view: OpenGlView) {
+        engine?.attachPreview(view)
+    }
+
+    override fun onDestroy() {
+        engine?.release()
+        engine = null
+        super.onDestroy()
     }
 }
 
+private enum class StudioTab(val label: String) {
+    LIVE("AO VIVO"),
+    SCENES("CENAS"),
+    SOURCES("FONTES"),
+    AUDIO("ÁUDIO"),
+    SETTINGS("AJUSTES")
+}
+
 @Composable
-private fun NovaScreen() {
+private fun NovaStreamApp(activity: MainActivity) {
     val context = LocalContext.current
-    var cameraOk by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    var tab by remember { mutableStateOf(StudioTab.LIVE) }
+    var permissionsOk by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        )
     }
-    var audioOk by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-    }
-    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        cameraOk = result[Manifest.permission.CAMERA] == true ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        audioOk = result[Manifest.permission.RECORD_AUDIO] == true ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-    LaunchedEffect(Unit) {
-        val missing = mutableListOf<String>()
-        if (!cameraOk) missing.add(Manifest.permission.CAMERA)
-        if (!audioOk) missing.add(Manifest.permission.RECORD_AUDIO)
-        if (missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
-    }
-
-    var front by remember { mutableStateOf(false) }
+    var endpoint by remember { mutableStateOf("") }
+    var caption by remember { mutableStateOf("YLTON ROCHA  |  AO VIVO") }
     var scene by remember { mutableStateOf("Câmera") }
-    var title by remember { mutableStateOf("SEU NOME | AO VIVO") }
-    var capture by remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
-    var recording by remember { mutableStateOf<Recording?>(null) }
-    var running by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Pronto para gravar") }
+    var chroma by remember { mutableStateOf(false) }
+    var sensitivity by remember { mutableFloatStateOf(0.72f) }
+    var micGain by remember { mutableFloatStateOf(1f) }
+    var bitrate by remember { mutableFloatStateOf(3.5f) }
+    var muted by remember { mutableStateOf(false) }
+    var imageLoaded by remember { mutableStateOf(false) }
 
-    MaterialTheme(colorScheme = darkColorScheme(primary = Gold, background = Dark, surface = Color(0xFF191919))) {
-        Column(
-            Modifier.fillMaxSize().background(Dark).verticalScroll(rememberScrollState()).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("NOVASTREAM", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                    Text("STUDIO", color = Color.White, letterSpacing = 5.sp, fontSize = 11.sp)
-                }
-                Text(if (running) "● GRAVANDO" else "● ESTÚDIO", color = if (running) Color.Red else Gold)
-            }
-            Box(Modifier.fillMaxWidth().aspectRatio(9f / 12f).clip(RoundedCornerShape(18.dp)).background(Color.Black)) {
-                if (cameraOk && scene == "Câmera") {
-                    CameraFeed(front, { capture = it }, Modifier.fillMaxSize())
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        permissionsOk = result[Manifest.permission.CAMERA] == true &&
+            result[Manifest.permission.RECORD_AUDIO] == true
+        if (permissionsOk) activity.prepareEngine()
+        else activity.engineMessage = "Libere câmera e microfone nas permissões do Android"
+    }
+
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            try {
+                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    activity.engine?.setImage(bitmap)
+                    imageLoaded = true
                 } else {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            if (!cameraOk) "LIBERE A CÂMERA" else if (scene == "Intervalo") "JÁ VOLTAMOS" else "CENA PRETA",
-                            color = Gold, fontSize = 22.sp, fontWeight = FontWeight.Bold
+                    activity.engineMessage = "Não foi possível abrir essa imagem"
+                }
+            } catch (error: Exception) {
+                activity.engineMessage = "Erro ao carregar imagem"
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (permissionsOk) {
+            activity.prepareEngine()
+        } else {
+            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+        }
+    }
+
+    fun applyComposition() {
+        activity.engine?.setComposition(scene, caption, chroma, sensitivity)
+    }
+
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Gold,
+            onPrimary = Color.Black,
+            background = Bg,
+            surface = Panel,
+            onSurface = Color.White
+        )
+    ) {
+        Scaffold(
+            containerColor = Bg,
+            bottomBar = {
+                NavigationBar(containerColor = Color(0xFF111111), contentColor = Gold) {
+                    StudioTab.values().forEach { item ->
+                        NavigationBarItem(
+                            selected = tab == item,
+                            onClick = { tab = item },
+                            icon = {},
+                            label = { Text(item.label, fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Gold,
+                                selectedTextColor = Gold,
+                                indicatorColor = Color(0xFF382F1B),
+                                unselectedTextColor = Muted
+                            )
                         )
                     }
                 }
-                if (title.isNotBlank()) {
-                    Text(title, Modifier.align(Alignment.BottomStart).padding(12.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(Color(0xBB000000)).padding(8.dp),
-                        color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Text("PRÉVIA", Modifier.align(Alignment.TopStart).padding(10.dp)
-                    .background(Color(0x99000000), RoundedCornerShape(4.dp)).padding(6.dp),
-                    color = Color.White, fontSize = 10.sp)
             }
-            Text("CENAS", color = Gold, fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Câmera", "Intervalo", "Preto").forEach { value ->
-                    Button(onClick = { scene = value }, modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (scene == value) Gold else Color.DarkGray)) {
-                        Text(value, color = if (scene == value) Color.Black else Color.White, fontSize = 11.sp)
-                    }
-                }
-            }
-            OutlinedTextField(value = title, onValueChange = { title = it },
-                label = { Text("Texto na prévia") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { front = !front; scene = "Câmera" }, modifier = Modifier.weight(1f)) {
-                    Text("Virar câmera")
-                }
-                OutlinedButton(onClick = {
-                    val missing = mutableListOf<String>()
-                    if (!cameraOk) missing.add(Manifest.permission.CAMERA)
-                    if (!audioOk) missing.add(Manifest.permission.RECORD_AUDIO)
-                    if (missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
-                }, modifier = Modifier.weight(1f)) { Text("Permissões") }
-            }
-            Button(
-                onClick = {
-                    val active = recording
-                    if (active != null) {
-                        active.stop()
-                        status = "Finalizando arquivo..."
-                    } else {
-                        val video = capture
-                        if (!cameraOk) {
-                            permissions.launch(arrayOf(Manifest.permission.CAMERA))
-                        } else if (video == null || scene != "Câmera") {
-                            status = "Selecione Câmera e aguarde a prévia"
-                        } else {
-                            try {
-                                val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                                val values = ContentValues().apply {
-                                    put(MediaStore.Video.Media.DISPLAY_NAME, "NovaStream_" + stamp + ".mp4")
-                                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/NovaStreamStudio")
-                                }
-                                val output = MediaStoreOutputOptions.Builder(context.contentResolver,
-                                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI).setContentValues(values).build()
-                                var pending = video.output.prepareRecording(context, output)
-                                if (audioOk) pending = pending.withAudioEnabled()
-                                recording = pending.start(ContextCompat.getMainExecutor(context)) { event ->
-                                    when (event) {
-                                        is VideoRecordEvent.Start -> {
-                                            running = true
-                                            status = if (audioOk) "Gravando vídeo e microfone" else "Gravando vídeo sem áudio"
-                                        }
-                                        is VideoRecordEvent.Finalize -> {
-                                            recording = null
-                                            running = false
-                                            status = if (event.hasError()) "Falha ao salvar: " + event.error
-                                                else "Salvo em Filmes/NovaStreamStudio"
-                                            Toast.makeText(context, status, Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                }
-                            } catch (error: Exception) {
-                                status = "Erro: " + (error.localizedMessage ?: "não foi possível iniciar")
-                            }
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = if (running) Color(0xFFB3261E) else Gold),
-                shape = RoundedCornerShape(12.dp)
+        ) { padding ->
+            Column(
+                Modifier.fillMaxSize().padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(if (running) "PARAR GRAVAÇÃO" else "● GRAVAR VÍDEO", color = Color.White, fontWeight = FontWeight.Bold)
+                Header(activity.engine?.live == true, activity.engine?.recording == true)
+                when (tab) {
+                    StudioTab.LIVE -> LivePage(
+                        activity = activity,
+                        endpoint = endpoint,
+                        onEndpointChange = { endpoint = it },
+                        scene = scene,
+                        onSceneChange = {
+                            scene = it
+                            applyComposition()
+                        },
+                        caption = caption,
+                        onSwitchCamera = { activity.engine?.switchCamera() },
+                        onStartLive = { activity.engine?.startLive(endpoint) },
+                        onStopLive = { activity.engine?.stopLive() },
+                        onStartRecord = { activity.engine?.startRecording() },
+                        onStopRecord = { activity.engine?.stopRecording() },
+                        permissionsOk = permissionsOk,
+                        onRequestPermissions = {
+                            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                        }
+                    )
+                    StudioTab.SCENES -> ScenesPage(
+                        selected = scene,
+                        onSelect = {
+                            scene = it
+                            applyComposition()
+                        },
+                        caption = caption,
+                        onCaptionChange = {
+                            caption = it
+                            applyComposition()
+                        }
+                    )
+                    StudioTab.SOURCES -> SourcesPage(
+                        caption = caption,
+                        onCaptionChange = { caption = it },
+                        onApplyText = { applyComposition() },
+                        onPickImage = { imagePicker.launch("image/*") },
+                        imageLoaded = imageLoaded,
+                        chroma = chroma,
+                        onChromaChange = {
+                            chroma = it
+                            applyComposition()
+                        },
+                        sensitivity = sensitivity,
+                        onSensitivityChange = {
+                            sensitivity = it
+                            applyComposition()
+                        },
+                        engineReady = activity.engine != null
+                    )
+                    StudioTab.AUDIO -> AudioPage(
+                        gain = micGain,
+                        onGainChange = {
+                            micGain = it
+                            activity.engine?.setMicrophoneGain(it)
+                        },
+                        muted = muted,
+                        onMuteChange = {
+                            muted = it
+                            activity.engine?.setMicrophoneMuted(it)
+                        }
+                    )
+                    StudioTab.SETTINGS -> SettingsPage(
+                        endpoint = endpoint,
+                        onEndpointChange = { endpoint = it },
+                        bitrate = bitrate,
+                        onBitrateChange = {
+                            bitrate = it
+                            activity.engine?.setVideoBitrate(it)
+                        },
+                        status = activity.engineMessage,
+                        bitrateKbps = activity.engine?.sentBitrateKbps ?: 0
+                    )
+                }
+                Text(activity.engineMessage, color = Muted, fontSize = 11.sp)
             }
-            Text(status, color = Color.LightGray, fontSize = 12.sp)
-            Text(
-                "Protótipo 0.1.0: prévia da câmera, troca frontal/traseira e gravação MP4 com áudio do microfone quando autorizado. O texto aparece somente na prévia. Ainda não há transmissão ao vivo, chroma key, captura de tela ou mixer de áudio.",
-                color = Color.Gray, fontSize = 10.sp, lineHeight = 14.sp
-            )
         }
     }
 }
 
 @Composable
-private fun CameraFeed(
-    front: Boolean,
-    onReady: (VideoCapture<Recorder>) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val context = LocalContext.current
-    val owner: LifecycleOwner = LocalLifecycleOwner.current
-    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
-    val recorder = remember {
-        Recorder.Builder().setQualitySelector(
-            QualitySelector.from(Quality.FHD, FallbackStrategy.lowerQualityOrHigherThan(Quality.SD))
-        ).build()
-    }
-    val video = remember { VideoCapture.withOutput(recorder) }
-    AndroidView(factory = { previewView }, modifier = modifier)
-
-    LaunchedEffect(front, owner) {
-        val future = ProcessCameraProvider.getInstance(context)
-        future.addListener({
-            try {
-                val provider = future.get()
-                val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
-                val lens = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
-                provider.unbindAll()
-                provider.bindToLifecycle(owner, lens, preview, video)
-                onReady(video)
-            } catch (_: Exception) { }
-        }, ContextCompat.getMainExecutor(context))
-    }
-    DisposableEffect(owner) {
-        onDispose {
-            try { ProcessCameraProvider.getInstance(context).get().unbindAll() } catch (_: Exception) { }
+private fun Header(live: Boolean, recording: Boolean) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("NOVASTREAM", color = Gold, fontSize = 23.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+            Text("STUDIO  |  MOBILE BROADCAST ENGINE", color = Muted, fontSize = 8.sp, letterSpacing = 1.2.sp)
         }
+        Column(horizontalAlignment = Alignment.End) {
+            StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
+            Text("v0.3.0", color = Muted, fontSize = 9.sp)
+        }
+    }
+}
+
+@Composable
+private fun StatusLabel(text: String, active: Boolean) {
+    Surface(color = if (active) Color(0xFF3B1717) else Color(0xFF272217), shape = RoundedCornerShape(50)) {
+        Text(text, color = if (active) Color(0xFFFF7777) else Gold, fontSize = 10.sp,
+            fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+    }
+}
+
+@Composable
+private fun LivePage(
+    activity: MainActivity,
+    endpoint: String,
+    onEndpointChange: (String) -> Unit,
+    scene: String,
+    onSceneChange: (String) -> Unit,
+    caption: String,
+    onSwitchCamera: () -> Unit,
+    onStartLive: () -> Unit,
+    onStopLive: () -> Unit,
+    onStartRecord: () -> Unit,
+    onStopRecord: () -> Unit,
+    permissionsOk: Boolean,
+    onRequestPermissions: () -> Unit
+) {
+    val engine = activity.engine
+    StudioCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("MONITOR DE PROGRAMA", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f))
+            Text("720 × 1280  •  30 FPS", color = Muted, fontSize = 9.sp)
+        }
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(9f / 12.5f)
+                .background(Color.Black, RoundedCornerShape(14.dp))
+        ) {
+            if (engine != null) {
+                AndroidView(
+                    factory = { OpenGlView(it) },
+                    update = { activity.attachPreview(it) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("NOVASTREAM", color = Gold, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                    Text("Aguardando câmera e microfone", color = Muted, fontSize = 10.sp)
+                }
+            }
+            StatusLabel(if (engine?.live == true) "● TRANSMITINDO" else "PRÉVIA", engine?.live == true)
+            Text(caption, color = Color.White, fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.BottomStart).padding(10.dp)
+                    .background(Color(0xAA000000), RoundedCornerShape(5.dp)).padding(7.dp))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onSwitchCamera, enabled = engine != null, modifier = Modifier.weight(1f)) {
+                Text("TROCAR CÂMERA", fontSize = 10.sp)
+            }
+            OutlinedButton(onClick = { onSceneChange(if (scene == "Câmera") "Intervalo" else "Câmera") },
+                enabled = engine != null, modifier = Modifier.weight(1f)) {
+                Text(if (scene == "Câmera") "INTERVALO" else "VOLTAR À CÂMERA", fontSize = 10.sp)
+            }
+        }
+    }
+
+    StudioCard {
+        Text("DESTINO DA TRANSMISSÃO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = endpoint,
+            onValueChange = onEndpointChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("URL RTMP / RTMPS / SRT") },
+            placeholder = { Text("rtmp://servidor/app/chave") },
+            singleLine = true
+        )
+        Text("Use o endereço do servidor junto com a chave fornecida pela plataforma. O aplicativo não armazena a chave após ser fechado.",
+            color = Muted, fontSize = 10.sp)
+        Button(
+            onClick = if (engine?.live == true) onStopLive else onStartLive,
+            enabled = engine != null && (engine.live || endpoint.isNotBlank()),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (engine?.live == true) Color(0xFF9F2828) else Gold
+            )
+        ) {
+            Text(if (engine?.live == true) "ENCERRAR TRANSMISSÃO" else "INICIAR TRANSMISSÃO",
+                color = if (engine?.live == true) Color.White else Color.Black, fontWeight = FontWeight.Bold)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = if (engine?.recording == true) onStopRecord else onStartRecord,
+                enabled = engine != null,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (engine?.recording == true) "PARAR GRAVAÇÃO" else "GRAVAR MP4", fontSize = 10.sp)
+            }
+            OutlinedButton(onClick = onRequestPermissions, enabled = !permissionsOk, modifier = Modifier.weight(1f)) {
+                Text("PERMISSÕES", fontSize = 10.sp)
+            }
+        }
+    }
+
+    StudioCard {
+        Text("MODOS DO ESTÚDIO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            ModeTile("CÂMERA", true, Modifier.weight(1f))
+            ModeTile("TELA", false, Modifier.weight(1f))
+            ModeTile("VTUBER", false, Modifier.weight(1f))
+        }
+        Text("Câmera e transmissão RTMP estão ativadas nesta versão. Captura de tela e VTuber estão planejados para módulos separados.",
+            color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ModeTile(label: String, active: Boolean, modifier: Modifier = Modifier) {
+    Surface(color = if (active) Color(0xFF3A301B) else Color(0xFF202020),
+        shape = RoundedCornerShape(9.dp), modifier = modifier) {
+        Column(Modifier.padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, color = if (active) Gold else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(if (active) "ATIVO" else "PLANEJADO", color = Muted, fontSize = 8.sp)
+        }
+    }
+}
+
+@Composable
+private fun ScenesPage(
+    selected: String,
+    onSelect: (String) -> Unit,
+    caption: String,
+    onCaptionChange: (String) -> Unit
+) {
+    StudioCard {
+        Text("CENAS", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Cada cena controla o que é enviado ao preview e ao encoder.", color = Muted, fontSize = 10.sp)
+        listOf("Câmera", "Iniciando", "Intervalo", "Tela preta").forEach { item ->
+            Button(
+                onClick = { onSelect(item) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selected == item) Gold else Color(0xFF292929)
+                )
+            ) {
+                Text(item, color = if (selected == item) Color.Black else Color.White)
+            }
+        }
+        OutlinedTextField(
+            value = caption,
+            onValueChange = onCaptionChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Título / legenda da cena") }
+        )
+    }
+    StudioCard {
+        Text("ORGANIZAÇÃO DE CENAS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("A estrutura aceita presets independentes. A próxima etapa adicionará salvar, duplicar e reordenar cenas sem alterar o motor de transmissão.",
+            color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun SourcesPage(
+    caption: String,
+    onCaptionChange: (String) -> Unit,
+    onApplyText: () -> Unit,
+    onPickImage: () -> Unit,
+    imageLoaded: Boolean,
+    chroma: Boolean,
+    onChromaChange: (Boolean) -> Unit,
+    sensitivity: Float,
+    onSensitivityChange: (Float) -> Unit,
+    engineReady: Boolean
+) {
+    StudioCard {
+        Text("FONTES E SOBREPOSIÇÕES", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Adicione elementos que entram na composição enviada ao encoder.", color = Muted, fontSize = 10.sp)
+        OutlinedTextField(
+            value = caption,
+            onValueChange = onCaptionChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Texto da transmissão") }
+        )
+        Button(onClick = onApplyText, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text("APLICAR TEXTO NA TRANSMISSÃO")
+        }
+        OutlinedButton(onClick = onPickImage, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text(if (imageLoaded) "TROCAR IMAGEM / LOGO" else "ADICIONAR IMAGEM / LOGO")
+        }
+    }
+    StudioCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("CHROMA KEY", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Remoção de fundo verde usando filtro OpenGL", color = Muted, fontSize = 10.sp)
+            }
+            Switch(checked = chroma, onCheckedChange = onChromaChange, enabled = engineReady)
+        }
+        Text("Sensibilidade", color = Color.White, fontSize = 11.sp)
+        Slider(value = sensitivity, onValueChange = onSensitivityChange, valueRange = 0.1f..1f, enabled = chroma && engineReady)
+        Text("Use um fundo verde uniforme e boa iluminação. O resultado depende da câmera e da luz.", color = Muted, fontSize = 10.sp)
+    }
+    StudioCard {
+        Text("PRÓXIMAS FONTES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("Vídeo e playlist, páginas web, alertas, QR Code e chat unificado ainda precisam dos módulos próprios. Eles não estão ativos nesta versão.",
+            color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun AudioPage(
+    gain: Float,
+    onGainChange: (Float) -> Unit,
+    muted: Boolean,
+    onMuteChange: (Boolean) -> Unit
+) {
+    StudioCard {
+        Text("MIXER DE ÁUDIO", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Microfone", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Entrada principal", color = Muted, fontSize = 10.sp)
+            }
+            Switch(checked = !muted, onCheckedChange = { onMuteChange(!it) })
+        }
+        Text(if (muted) "Microfone silenciado" else "Ganho: ${(gain * 100).toInt()}%", color = Muted, fontSize = 10.sp)
+        Slider(value = gain, onValueChange = onGainChange, valueRange = 0f..2f)
+    }
+    StudioCard {
+        Text("PROCESSAMENTO", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("Cancelamento de eco e supressão de ruído são solicitados ao Android na preparação da entrada de microfone.",
+            color = Muted, fontSize = 10.sp)
+        Divider(color = Color(0xFF363636))
+        Text("Áudio interno do jogo e canais separados (música / alertas) serão adicionados com captura de tela e mixer PCM dedicado.",
+            color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun SettingsPage(
+    endpoint: String,
+    onEndpointChange: (String) -> Unit,
+    bitrate: Float,
+    onBitrateChange: (Float) -> Unit,
+    status: String,
+    bitrateKbps: Long
+) {
+    StudioCard {
+        Text("SAÍDA E QUALIDADE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        OutlinedTextField(
+            value = endpoint,
+            onValueChange = onEndpointChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("URL do servidor + chave") },
+            placeholder = { Text("rtmp://...") },
+            singleLine = true
+        )
+        Text("Perfil atual: H.264 · 720 × 1280 · 30 FPS · AAC 44,1 kHz", color = Muted, fontSize = 10.sp)
+        Text("Bitrate de vídeo: ${"%.1f".format(bitrate)} Mbps", color = Color.White, fontSize = 11.sp)
+        Slider(value = bitrate, onValueChange = onBitrateChange, valueRange = 0.8f..6f)
+        Text("Durante uma live o bitrate é ajustado no encoder. Antes de iniciar, a configuração padrão permanece em 3,5 Mbps.",
+            color = Muted, fontSize = 10.sp)
+    }
+    StudioCard {
+        Text("MONITOR DE REDE", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("Bitrate reportado: ${bitrateKbps} kbps", color = Color.White, fontSize = 12.sp)
+        Text(status, color = Muted, fontSize = 10.sp)
+    }
+    StudioCard {
+        Text("DESTINOS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("Esta versão aceita um destino RTMP/SRT por vez. Multistream exige relay próprio ou integração oficial com cada plataforma; não é ativado por simplesmente inserir várias chaves.",
+            color = Muted, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun StudioCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(color = Panel, shape = RoundedCornerShape(15.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp), content = content)
     }
 }
