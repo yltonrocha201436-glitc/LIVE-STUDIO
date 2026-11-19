@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -81,28 +82,48 @@ private enum class StudioTab(val label: String) {
 @Composable
 private fun NovaStreamApp(activity: MainActivity) {
     val context = LocalContext.current
-    var tab by remember { mutableStateOf(StudioTab.LIVE) }
+    val prefs = remember(context) {
+        context.getSharedPreferences("novastream_studio_preferences", android.content.Context.MODE_PRIVATE)
+    }
+    var tab by rememberSaveable { mutableStateOf(StudioTab.LIVE) }
     var permissionsOk by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         )
     }
-    var endpoint by remember { mutableStateOf("") }
-    var caption by remember { mutableStateOf("YLTON ROCHA  |  AO VIVO") }
-    var scene by remember { mutableStateOf("Câmera") }
-    var chroma by remember { mutableStateOf(false) }
-    var visualFilter by remember { mutableStateOf("Normal") }
-    var sensitivity by remember { mutableFloatStateOf(0.72f) }
-    var micGain by remember { mutableFloatStateOf(1f) }
-    var systemGain by remember { mutableFloatStateOf(1f) }
-    var bitrate by remember { mutableFloatStateOf(3.5f) }
-    var muted by remember { mutableStateOf(false) }
+    var endpoint by rememberSaveable { mutableStateOf(prefs.getString("endpoint", "") ?: "") }
+    var caption by rememberSaveable { mutableStateOf(prefs.getString("caption", "YLTON ROCHA  |  AO VIVO") ?: "YLTON ROCHA  |  AO VIVO") }
+    var caption2 by rememberSaveable { mutableStateOf(prefs.getString("caption2", "") ?: "") }
+    var caption3 by rememberSaveable { mutableStateOf(prefs.getString("caption3", "") ?: "") }
+    var qrContent by rememberSaveable { mutableStateOf("") }
+    var imageCount by rememberSaveable { mutableStateOf(0) }
+    var customScenesRaw by rememberSaveable { mutableStateOf(prefs.getString("custom_scenes", "") ?: "") }
+    val customScenes = remember(customScenesRaw) { customScenesRaw.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(12) }
+    var scene by rememberSaveable { mutableStateOf(prefs.getString("scene", "Câmera") ?: "Câmera") }
+    var chroma by rememberSaveable { mutableStateOf(prefs.getBoolean("chroma", false)) }
+    var visualFilter by rememberSaveable { mutableStateOf(prefs.getString("visual_filter", "Normal") ?: "Normal") }
+    var sensitivity by rememberSaveable { mutableFloatStateOf(prefs.getFloat("chroma_sensitivity", 0.72f)) }
+    var micGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("mic_gain", 1f)) }
+    var systemGain by rememberSaveable { mutableFloatStateOf(prefs.getFloat("system_gain", 1f)) }
+    var bitrate by rememberSaveable { mutableFloatStateOf(prefs.getFloat("bitrate", 3.5f)) }
+    var muted by rememberSaveable { mutableStateOf(prefs.getBoolean("muted", false)) }
     var imageLoaded by remember { mutableStateOf(false) }
     var mouthClosedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var mouthOpenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var chromaBackgroundLoaded by remember { mutableStateOf(false) }
     var screenMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(endpoint, caption, caption2, caption3, scene, chroma, visualFilter, sensitivity, micGain, systemGain, bitrate, muted, customScenesRaw) {
+        prefs.edit()
+            .putString("endpoint", endpoint).putString("caption", caption)
+            .putString("caption2", caption2).putString("caption3", caption3)
+            .putString("scene", scene).putBoolean("chroma", chroma)
+            .putString("visual_filter", visualFilter).putFloat("chroma_sensitivity", sensitivity)
+            .putFloat("mic_gain", micGain).putFloat("system_gain", systemGain)
+            .putFloat("bitrate", bitrate).putBoolean("muted", muted)
+            .putString("custom_scenes", customScenesRaw).apply()
+    }
 
     val screenCaptureLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -135,19 +156,21 @@ private fun NovaStreamApp(activity: MainActivity) {
         else activity.engineMessage = "Libere câmera e microfone nas permissões do Android"
     }
 
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) {
-            try {
-                val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-                if (bitmap != null) {
-                    activity.engine?.setImage(bitmap)
-                    imageLoaded = true
-                } else {
-                    activity.engineMessage = "Não foi possível abrir essa imagem"
-                }
-            } catch (error: Exception) {
-                activity.engineMessage = "Erro ao carregar imagem"
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        try {
+            val bitmaps = uris.take(5).mapNotNull { uri ->
+                context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
             }
+            if (bitmaps.isNotEmpty()) {
+                activity.engine?.setImages(bitmaps)
+                imageCount = bitmaps.size
+                imageLoaded = true
+            } else if (uris.isNotEmpty()) {
+                activity.engineMessage = "Nenhuma imagem pôde ser carregada"
+            }
+            if (uris.size > 5) activity.engineMessage = "Foram carregadas cinco imagens. Esse é o limite atual."
+        } catch (error: Exception) {
+            activity.engineMessage = "Erro ao carregar imagens"
         }
     }
 
@@ -206,7 +229,7 @@ private fun NovaStreamApp(activity: MainActivity) {
     }
 
     fun applyComposition() {
-        activity.engine?.setComposition(scene, caption, chroma, sensitivity, visualFilter)
+        activity.engine?.setComposition(scene, caption, chroma, sensitivity, visualFilter, listOf(caption2, caption3))
     }
 
     MaterialTheme(
@@ -278,15 +301,16 @@ private fun NovaStreamApp(activity: MainActivity) {
                     )
                     StudioTab.SCENES -> ScenesPage(
                         selected = scene,
-                        onSelect = {
-                            scene = it
-                            applyComposition()
+                        availableScenes = listOf("Câmera", "Iniciando", "Intervalo", "Tela preta") + customScenes,
+                        onAddScene = { name ->
+                            val cleanName = name.trim().take(28)
+                            if (cleanName.isNotBlank() && cleanName !in (listOf("Câmera", "Iniciando", "Intervalo", "Tela preta") + customScenes)) {
+                                customScenesRaw = (customScenes + cleanName).joinToString("\n")
+                            }
                         },
+                        onSelect = { scene = it; applyComposition() },
                         caption = caption,
-                        onCaptionChange = {
-                            caption = it
-                            applyComposition()
-                        }
+                        onCaptionChange = { caption = it; applyComposition() }
                     )
                     StudioTab.SOURCES -> SourcesPage(
                         caption = caption,
@@ -294,6 +318,30 @@ private fun NovaStreamApp(activity: MainActivity) {
                         onApplyText = { applyComposition() },
                         onPickImage = { imagePicker.launch("image/*") },
                         imageLoaded = imageLoaded,
+                        imageCount = imageCount,
+                        onClearImages = {
+                            activity.engine?.clearImages()
+                            imageCount = 0
+                            imageLoaded = false
+                        },
+                        qrContent = qrContent,
+                        onQrContentChange = { qrContent = it },
+                        onGenerateQr = {
+                            try {
+                                val qrBitmap = QrCodeGenerator.create(qrContent)
+                                val added = activity.engine?.addImageOverlay(qrBitmap) == true
+                                if (added) {
+                                    imageCount = (imageCount + 1).coerceAtMost(5)
+                                    imageLoaded = true
+                                    activity.engineMessage = "QR Code adicionado à composição"
+                                } else qrBitmap.recycle()
+                            } catch (error: Exception) {
+                                activity.engineMessage = "Não foi possível criar o QR Code: ${error.localizedMessage ?: "texto inválido"}"
+                            }
+                        },
+                        secondCaption = caption2, thirdCaption = caption3,
+                        onSecondCaptionChange = { caption2 = it },
+                        onThirdCaptionChange = { caption3 = it },
                         onPickMouthClosed = { mouthClosedPicker.launch("image/*") },
                         onPickMouthOpen = { mouthOpenPicker.launch("image/*") },
                         mouthClosedLoaded = mouthClosedBitmap != null,
@@ -362,7 +410,7 @@ private fun Header(live: Boolean, recording: Boolean) {
         }
         Column(horizontalAlignment = Alignment.End) {
             StatusLabel(if (live) "AO VIVO" else if (recording) "GRAVANDO" else "ESTÚDIO", live || recording)
-            Text("v0.7.0", color = Muted, fontSize = 9.sp)
+            Text("v0.8.0", color = Muted, fontSize = 9.sp)
         }
     }
 }
@@ -402,7 +450,7 @@ private fun LivePage(
             Text("720 × 1280  •  30 FPS", color = Muted, fontSize = 9.sp)
         }
         Box(
-            Modifier.fillMaxWidth().aspectRatio(9f / 12.5f)
+            Modifier.fillMaxWidth().aspectRatio(9f / 16f)
                 .background(Color.Black, RoundedCornerShape(14.dp))
         ) {
             if (screenMode) {
@@ -517,14 +565,17 @@ private fun ModeTile(label: String, active: Boolean, modifier: Modifier = Modifi
 @Composable
 private fun ScenesPage(
     selected: String,
+    availableScenes: List<String>,
+    onAddScene: (String) -> Unit,
     onSelect: (String) -> Unit,
     caption: String,
     onCaptionChange: (String) -> Unit
 ) {
+    var newSceneName by remember { mutableStateOf("") }
     StudioCard {
         Text("CENAS", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text("Cada cena controla o que é enviado ao preview e ao encoder.", color = Muted, fontSize = 10.sp)
-        listOf("Câmera", "Iniciando", "Intervalo", "Tela preta").forEach { item ->
+        availableScenes.forEach { item ->
             Button(
                 onClick = { onSelect(item) },
                 modifier = Modifier.fillMaxWidth(),
@@ -535,16 +586,16 @@ private fun ScenesPage(
                 Text(item, color = if (selected == item) Color.Black else Color.White)
             }
         }
-        OutlinedTextField(
-            value = caption,
-            onValueChange = onCaptionChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Título / legenda da cena") }
-        )
+        OutlinedTextField(value = caption, onValueChange = onCaptionChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Título / legenda da cena") })
+        OutlinedTextField(value = newSceneName, onValueChange = { newSceneName = it.take(28) },
+            modifier = Modifier.fillMaxWidth(), label = { Text("Nome de uma nova cena") }, singleLine = true)
+        Button(onClick = { onAddScene(newSceneName.trim()); newSceneName = "" },
+            enabled = newSceneName.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("CRIAR CENA") }
     }
     StudioCard {
-        Text("ORGANIZAÇÃO DE CENAS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        Text("A estrutura aceita presets independentes. A próxima etapa adicionará salvar, duplicar e reordenar cenas sem alterar o motor de transmissão.",
+        Text("CENAS PERSONALIZADAS", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text("Os nomes das cenas criadas ficam salvos neste aparelho. Cenas personalizadas usam a tela de espera; fontes individuais por cena e layouts arrastáveis ainda não estão implementados.",
             color = Muted, fontSize = 10.sp)
     }
 }
@@ -553,9 +604,18 @@ private fun ScenesPage(
 private fun SourcesPage(
     caption: String,
     onCaptionChange: (String) -> Unit,
+    secondCaption: String,
+    thirdCaption: String,
+    onSecondCaptionChange: (String) -> Unit,
+    onThirdCaptionChange: (String) -> Unit,
     onApplyText: () -> Unit,
     onPickImage: () -> Unit,
     imageLoaded: Boolean,
+    imageCount: Int,
+    onClearImages: () -> Unit,
+    qrContent: String,
+    onQrContentChange: (String) -> Unit,
+    onGenerateQr: () -> Unit,
     onPickMouthClosed: () -> Unit,
     onPickMouthOpen: () -> Unit,
     mouthClosedLoaded: Boolean,
@@ -573,18 +633,31 @@ private fun SourcesPage(
     StudioCard {
         Text("FONTES E SOBREPOSIÇÕES", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Text("Adicione elementos que entram na composição enviada ao encoder.", color = Muted, fontSize = 10.sp)
-        OutlinedTextField(
-            value = caption,
-            onValueChange = onCaptionChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Texto da transmissão") }
-        )
+        OutlinedTextField(value = caption, onValueChange = onCaptionChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Texto 1 · título") }, singleLine = true)
+        OutlinedTextField(value = secondCaption, onValueChange = onSecondCaptionChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Texto 2 · informação") }, singleLine = true)
+        OutlinedTextField(value = thirdCaption, onValueChange = onThirdCaptionChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text("Texto 3 · redes / chamada") }, singleLine = true)
         Button(onClick = onApplyText, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
-            Text("APLICAR TEXTO NA TRANSMISSÃO")
+            Text("APLICAR OS TRÊS TEXTOS")
         }
         OutlinedButton(onClick = onPickImage, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
-            Text(if (imageLoaded) "TROCAR IMAGEM / LOGO" else "ADICIONAR IMAGEM / LOGO")
+            Text("ADICIONAR IMAGENS / LOGOS  ·  $imageCount/5")
         }
+        if (imageCount > 0) OutlinedButton(onClick = onClearImages, enabled = engineReady, modifier = Modifier.fillMaxWidth()) {
+            Text("REMOVER TODAS AS IMAGENS")
+        }
+        Text("Até cinco imagens podem entrar na composição ao mesmo tempo.", color = Muted, fontSize = 10.sp)
+    }
+    StudioCard {
+        Text("QR CODE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text("Gere um QR Code para Pix, redes sociais, site ou link de divulgação. Ele entra como uma fonte de imagem na transmissão.",
+            color = Muted, fontSize = 10.sp)
+        OutlinedTextField(value = qrContent, onValueChange = onQrContentChange, modifier = Modifier.fillMaxWidth(),
+            label = { Text("URL ou texto do QR Code") }, singleLine = true)
+        Button(onClick = onGenerateQr, enabled = engineReady && qrContent.isNotBlank() && imageCount < 5,
+            modifier = Modifier.fillMaxWidth()) { Text("GERAR E ADICIONAR QR CODE") }
     }
     StudioCard {
         Text("AVATAR 2D · PNGTUBER", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
